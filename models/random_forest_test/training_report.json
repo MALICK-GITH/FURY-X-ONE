@@ -1,0 +1,90 @@
+{
+  "rows": 4712,
+  "feature_columns": [
+    "finished_at_hour",
+    "finished_at_weekday",
+    "created_at_hour",
+    "created_at_weekday",
+    "team_home",
+    "team_away",
+    "league",
+    "source",
+    "game_mode",
+    "game_version",
+    "league_group",
+    "fixture"
+  ],
+  "numeric_features": [
+    "finished_at_hour",
+    "finished_at_weekday",
+    "created_at_hour",
+    "created_at_weekday"
+  ],
+  "categorical_features": [
+    "team_home",
+    "team_away",
+    "league",
+    "source",
+    "game_mode",
+    "game_version",
+    "league_group",
+    "fixture"
+  ],
+  "targets": {
+    "result_1x2": {
+      "type": "classifier",
+      "metrics": {
+        "accuracy": 0.37434,
+        "f1_weighted": 0.39046
+      },
+      "classes": [
+        "1",
+        "2",
+        "N"
+      ]
+    },
+    "over_under_2_5": {
+      "type": "classifier",
+      "metrics": {
+        "accuracy": 0.79533,
+        "f1_weighted": 0.82461
+      },
+      "classes": [
+        "Over",
+        "Under"
+      ]
+    },
+    "btts": {
+      "type": "classifier",
+      "metrics": {
+        "accuracy": 0.76246,
+        "f1_weighted": 0.79006
+      },
+      "classes": [
+        "No",
+        "Yes"
+      ]
+    },
+    "score_home": {
+      "type": "regressor",
+      "metrics": {
+        "mae": 1.36801,
+        "rmse": 1.85359
+      }
+    },
+    "score_away": {
+      "type": "regressor",
+      "metrics": {
+        "mae": 1.35545,
+        "rmse": 1.84323
+      }
+    },
+    "total_goals": {
+      "type": "regressor",
+      "metrics": {
+        "mae": 1.97501,
+        "rmse": 2.82673
+      }
+    }
+  }
+}

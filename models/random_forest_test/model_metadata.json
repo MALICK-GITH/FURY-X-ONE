@@ -1,0 +1,50 @@
+{
+  "rows": 4712,
+  "train_rows": 3769,
+  "test_rows": 943,
+  "feature_columns": [
+    "finished_at_hour",
+    "finished_at_weekday",
+    "created_at_hour",
+    "created_at_weekday",
+    "team_home",
+    "team_away",
+    "league",
+    "source",
+    "game_mode",
+    "game_version",
+    "league_group",
+    "fixture"
+  ],
+  "numeric_features": [
+    "finished_at_hour",
+    "finished_at_weekday",
+    "created_at_hour",
+    "created_at_weekday"
+  ],
+  "categorical_features": [
+    "team_home",
+    "team_away",
+    "league",
+    "source",
+    "game_mode",
+    "game_version",
+    "league_group",
+    "fixture"
+  ],
+  "target_columns": [
+    "result_1x2",
+    "over_under_2_5",
+    "btts",
+    "score_home",
+    "score_away",
+    "total_goals"
+  ],
+  "recommended_primary_prediction": "result_1x2",
+  "recommended_secondary_predictions": [
+    "over_under_2_5",
+    "btts",
+    "score_home",
+    "score_away"
+  ]
+}
