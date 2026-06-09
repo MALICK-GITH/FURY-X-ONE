@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fury X One - Prédictions</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <p class="eyebrow">Plateforme de prédiction</p>
+        <div class="brand-row">
+          <div class="brand-mark">FX</div>
+          <div>
+            <h1>Fury X One</h1>
+            <p class="brand-subtitle">Virtual betting predictions</p>
+          </div>
+        </div>
+      </div>
+      <a class="home-link" href="#/">Accueil</a>
+    </header>
+
+    <main id="app"></main>
+  </div>
+
+  <button id="assistant-toggle" class="assistant-toggle" type="button" aria-label="Ouvrir l'assistant">IA</button>
+  <section id="assistant-panel" class="assistant-panel hidden" aria-label="Assistant Fury X One">
+    <div class="assistant-header">
+      <div>
+        <strong>Assistant Fury X One</strong>
+        <p>Résumé des pages, matchs et marchés</p>
+      </div>
+      <button id="assistant-close" class="assistant-close" type="button" aria-label="Fermer l'assistant">×</button>
+    </div>
+    <div id="assistant-messages" class="assistant-messages"></div>
+    <form id="assistant-form" class="assistant-form">
+      <textarea id="assistant-input" rows="2" placeholder="Pose une question sur les matchs, ligues ou marchés..."></textarea>
+      <button class="button" type="submit">Envoyer</button>
+    </form>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
