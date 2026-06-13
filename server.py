@@ -217,8 +217,8 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
 
 
 def run():
-    server = HTTPServer(("127.0.0.1", PORT), FuryRequestHandler)
-    print(f"Fury X One disponible sur http://localhost:{PORT}")
+    server = HTTPServer(("0.0.0.0", PORT), FuryRequestHandler)
+    print(f"Fury X One disponible sur http://0.0.0.0:{PORT}")
     server.serve_forever()
 
 

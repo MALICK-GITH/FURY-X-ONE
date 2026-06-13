@@ -868,12 +868,6 @@ async function handleAssistantSubmit(event) {
   renderAssistantMessages();
 }
 
-function escapeHtml(text) {
-  return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 
 function router() {
   if (state.loading) {
@@ -956,21 +950,6 @@ function encodeRouteSegment(value) {
   return encodeURIComponent(String(value ?? ""));
 }
 
-function renderLoading(message = "Chargement des ligues et matchs...") {
-  app.innerHTML = `<section class="hero"><h2>Chargement</h2><p>${escapeHtml(message)}</p></section>`;
-}
-
-function renderError(message) {
-  app.innerHTML = `
-    <section class="hero">
-      <h2>Erreur de chargement</h2>
-      <p>${escapeHtml(message)}</p>
-      <div class="actions">
-        <button class="button" onclick="bootstrap()">Réessayer</button>
-      </div>
-    </section>
-  `;
-}
 
 function renderHome() {
   const matches = getAllMatches();
@@ -1026,21 +1005,171 @@ function renderHome() {
 
 function renderLeagueCard(league) {
   const leagueId = encodeRouteSegment(league.id);
+  const summary = getMatchStatusSummary(league.matches);
   return `
     <article class="card league-card">
       <div class="league-card-top">
-        <span class="mini-badge">Ligue</span>
-        <h3>${escapeHtml(league.name)}</h3>
+        <div>
+          <span class="mini-badge">Ligue</span>
+          <h3>${escapeHtml(league.name)}</h3>
+        </div>
+        <span class="league-card-count">${escapeHtml(league.matches.length)} matchs</span>
       </div>
       <div class="league-meta">
         <span class="muted">Pays: ${escapeHtml(league.country)}</span>
         <span class="muted">Sport ID: ${escapeHtml(league.sportId)}</span>
-        <span class="muted">Matchs: ${escapeHtml(league.matches.length)}</span>
+      </div>
+      <div class="league-card-stats">
+        <div class="league-stat-chip"><span>Live</span><strong>${escapeHtml(summary.live)}</strong></div>
+        <div class="league-stat-chip"><span>A venir</span><strong>${escapeHtml(summary.notStarted)}</strong></div>
+        <div class="league-stat-chip"><span>Termines</span><strong>${escapeHtml(summary.finishedLike)}</strong></div>
       </div>
       <div class="actions">
         <a class="button" href="#/league/${leagueId}">Voir les matchs</a>
       </div>
     </article>
+  `;
+}
+
+function getOrderedMatches(matches) {
+  return [...matches].sort((left, right) => {
+    const leftPriority = isLiveState(left) ? 0 : isPrematchState(left) ? 1 : isHalftimeState(left) ? 2 : 3;
+    const rightPriority = isLiveState(right) ? 0 : isPrematchState(right) ? 1 : isHalftimeState(right) ? 2 : 3;
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+    return Number(left.S || 0) - Number(right.S || 0);
+  });
+}
+
+function formatOddValue(value) {
+  const numericValue = Number(value);
+  if (value === undefined || value === null || Number.isNaN(numericValue)) {
+    return "--";
+  }
+  return numericValue.toFixed(2);
+}
+
+function formatMarketLine(value) {
+  if (value === undefined || value === null || value === "") {
+    return "";
+  }
+  const numericValue = Number(value);
+  if (Number.isNaN(numericValue)) {
+    return String(value);
+  }
+  return numericValue > 0 ? `+${numericValue}` : `${numericValue}`;
+}
+
+function getTeamContext(match, side) {
+  if (side === "home") {
+    return {
+      name: match.O1,
+      city: match.O1CT || match.CN || match.CE || "Virtuel"
+    };
+  }
+  return {
+    name: match.O2,
+    city: match.O2CT || match.CN || match.CE || "Virtuel"
+  };
+}
+
+function findPrimaryMarket(match, predicate) {
+  return (match.E || []).find((item) => !item.B && item.CE === 1 && predicate(item))
+    || (match.E || []).find((item) => !item.B && predicate(item))
+    || null;
+}
+
+function getThreeWayOdds(match) {
+  return [
+    {
+      key: "home",
+      label: "1",
+      subtitle: "Domicile",
+      value: findPrimaryMarket(match, (item) => item.T === 1)?.C
+    },
+    {
+      key: "draw",
+      label: "X",
+      subtitle: "Nul",
+      value: findPrimaryMarket(match, (item) => item.T === 3)?.C
+    },
+    {
+      key: "away",
+      label: "2",
+      subtitle: "Exterieur",
+      value: findPrimaryMarket(match, (item) => item.T === 2)?.C
+    }
+  ];
+}
+
+function getMatchInsightMarkets(match) {
+  const totalMarket = findPrimaryMarket(match, (item) => item.G === 17 && (item.T === 9 || item.T === 10));
+  const bttsMarket = findPrimaryMarket(match, (item) => item.G === 62 && (item.T === 13 || item.T === 14));
+  const handicapMarket = findPrimaryMarket(match, (item) => item.G === 2 && (item.T === 7 || item.T === 8));
+  const marketCount = match.EC || (match.E || []).length;
+
+  return [
+    totalMarket
+      ? {
+          label: `${totalMarket.T === 9 ? "Plus" : "Moins"} ${formatMarketLine(totalMarket.P)}`,
+          value: formatOddValue(totalMarket.C)
+        }
+      : null,
+    bttsMarket
+      ? {
+          label: bttsMarket.T === 13 ? "BTTS Oui" : "BTTS Non",
+          value: formatOddValue(bttsMarket.C)
+        }
+      : null,
+    handicapMarket
+      ? {
+          label: `${handicapMarket.T === 7 ? "H1" : "H2"} ${formatMarketLine(handicapMarket.P)}`,
+          value: formatOddValue(handicapMarket.C)
+        }
+      : null,
+    {
+      label: "Marches ouverts",
+      value: String(marketCount)
+    }
+  ].filter(Boolean).slice(0, 4);
+}
+
+function renderOutcomeOdds(match) {
+  return getThreeWayOdds(match)
+    .map((odd) => `
+      <div class="sportsbook-odd-box sportsbook-odd-box-${escapeClassToken(odd.key)}">
+        <span class="sportsbook-odd-label">${escapeHtml(odd.label)}</span>
+        <strong>${escapeHtml(formatOddValue(odd.value))}</strong>
+        <small>${escapeHtml(odd.subtitle)}</small>
+      </div>
+    `)
+    .join("");
+}
+
+function renderMatchInsights(match) {
+  return getMatchInsightMarkets(match)
+    .map((item) => `
+      <div class="market-signal">
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value)}</strong>
+      </div>
+    `)
+    .join("");
+}
+
+function renderLeagueSpotlight(match) {
+  return `
+    <div class="sportsbook-spotlight">
+      <div class="sportsbook-spotlight-copy">
+        <span class="sportsbook-spotlight-label">A l'affiche</span>
+        <strong>${escapeHtml(match.O1)} vs ${escapeHtml(match.O2)}</strong>
+        <p>${escapeHtml(getCompactMatchInfo(match))}</p>
+      </div>
+      <div class="sportsbook-spotlight-odds">
+        ${renderOutcomeOdds(match)}
+      </div>
+    </div>
   `;
 }
 
@@ -1051,24 +1180,43 @@ function renderLeague(leagueId) {
     return;
   }
 
+  const orderedMatches = getOrderedMatches(league.matches);
+  const summary = getMatchStatusSummary(orderedMatches);
+  const spotlightMatch = orderedMatches[0] || null;
+
   app.innerHTML = `
     <section class="hero hero-league">
-      <h2>${escapeHtml(league.name)}</h2>
-      <p>${escapeHtml(league.matches.length)} match(s) disponibles dans cette ligue virtuelle.</p>
-      <div class="actions">
-        <a class="button-secondary" href="#/">Retour à l’accueil</a>
+      <div class="sportsbook-hero-top">
+        <div>
+          <span class="mini-badge">Match Center</span>
+          <h2>${escapeHtml(league.name)}</h2>
+          <p>Une presentation premium inspiree des applications de paris sportif, avec des affiches plus fortes, des cotes visibles et un acces rapide aux predictions.</p>
+        </div>
+        <div class="sportsbook-hero-side">
+          <span class="sportsbook-country">${escapeHtml(league.country)}</span>
+          <div class="actions">
+            <a class="button-secondary" href="#/">Retour a l'accueil</a>
+          </div>
+        </div>
       </div>
+      <div class="sportsbook-summary-grid">
+        <div class="sportsbook-summary-card"><span>Affiches</span><strong>${escapeHtml(orderedMatches.length)}</strong></div>
+        <div class="sportsbook-summary-card"><span>En direct</span><strong>${escapeHtml(summary.live)}</strong></div>
+        <div class="sportsbook-summary-card"><span>A venir</span><strong>${escapeHtml(summary.notStarted)}</strong></div>
+        <div class="sportsbook-summary-card"><span>Mi-temps</span><strong>${escapeHtml(summary.halftime)}</strong></div>
+      </div>
+      ${spotlightMatch ? renderLeagueSpotlight(spotlightMatch) : ""}
     </section>
 
     <section class="section-block">
       <div class="section-heading">
         <h2>Matchs</h2>
-        <p class="muted">Vue rapide des affiches, scores, statuts et marchés principaux.</p>
+        <p class="muted">Chaque carte affiche le score, le statut, les cotes 1X2 et des marches cles dans un format premium.</p>
       </div>
     </section>
 
-    <section class="matches">
-      ${league.matches.map(renderMatchCard).join("")}
+    <section class="matches matches-sportsbook">
+      ${orderedMatches.map(renderMatchCard).join("")}
     </section>
   `;
 }
@@ -1076,40 +1224,56 @@ function renderLeague(leagueId) {
 function renderMatchCard(match) {
   const scoreDisplay = getScoreDisplay(match);
   const matchId = encodeRouteSegment(match.I);
+  const homeTeam = getTeamContext(match, "home");
+  const awayTeam = getTeamContext(match, "away");
+  const marketsCount = match.EC || (match.E || []).length;
   return `
-    <article class="match-card">
+    <article class="match-card match-card-premium">
       <div class="match-card-top">
         <div class="pill-row">
           <span class="pill ${getStatusClass(match)}">${escapeHtml(getDisplayStatus(match))}</span>
           <span class="pill">${escapeHtml(getDisplayPhase(match))}</span>
+          <span class="pill pill-soft">${escapeHtml(match.LE || match.L || "Ligue virtuelle")}</span>
         </div>
-        <span class="muted">Début: ${escapeHtml(formatTimestamp(match.S))}</span>
-      </div>
-
-      <div class="teams">
-        <div class="team-col">
-          <p class="muted">Équipe 1</p>
-          <h3>${escapeHtml(match.O1)}</h3>
-        </div>
-        <div class="score ${hasLiveScore(match) ? "" : "score-muted"}">${escapeHtml(scoreDisplay)}</div>
-        <div class="team-col">
-          <p class="muted">Équipe 2</p>
-          <h3>${escapeHtml(match.O2)}</h3>
+        <div class="match-kickoff-block">
+          <span>Coup d'envoi</span>
+          <strong>${escapeHtml(formatTimestamp(match.S))}</strong>
         </div>
       </div>
 
-      <div class="match-meta">
-        <div class="pill-row">
-          <span class="pill">Temps: ${escapeHtml(getDisplayTime(match))}</span>
+      <div class="sportsbook-board">
+        <div class="team-stack">
+          <span class="team-side-label">Equipe 1</span>
+          <h3>${escapeHtml(homeTeam.name)}</h3>
+          <p class="muted">${escapeHtml(homeTeam.city)}</p>
         </div>
-        <p class="muted match-info-line">${escapeHtml(getCompactMatchInfo(match))}</p>
-        <div class="odds-row">
-          ${(match.E || []).slice(0, 5).map((item) => `<span class="odd-pill">${escapeHtml(betTypeLabels[item.T] || `Type ${item.T}`)}${item.P ? ` ${escapeHtml(item.P)}` : ""} · ${escapeHtml(item.C)}</span>`).join("")}
+        <div class="board-center">
+          <div class="score ${hasLiveScore(match) ? "" : "score-muted"}">${escapeHtml(scoreDisplay)}</div>
+          <p class="match-info-line">${escapeHtml(getCompactMatchInfo(match))}</p>
+        </div>
+        <div class="team-stack team-stack-right">
+          <span class="team-side-label">Equipe 2</span>
+          <h3>${escapeHtml(awayTeam.name)}</h3>
+          <p class="muted">${escapeHtml(awayTeam.city)}</p>
         </div>
       </div>
 
-      <div class="actions">
-        <a class="button" href="#/prediction/${matchId}">Détails</a>
+      <div class="sportsbook-odds-strip">
+        ${renderOutcomeOdds(match)}
+      </div>
+
+      <div class="market-signal-row">
+        ${renderMatchInsights(match)}
+      </div>
+
+      <div class="match-card-footer">
+        <div class="match-card-volume">
+          <strong>${escapeHtml(marketsCount)}</strong>
+          <span>marches disponibles</span>
+        </div>
+        <div class="actions">
+          <a class="button" href="#/prediction/${matchId}">Analyser le match</a>
+        </div>
       </div>
     </article>
   `;
