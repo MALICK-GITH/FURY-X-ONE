@@ -9,20 +9,24 @@ import mimetypes
 import os
 import ssl
 import time
-from datetime import datetime, timezone
 
 
-PORT = int(os.environ.get("PORT", 3000))
+PORT = 3000
 BASE_DIR = Path(__file__).resolve().parent
 API_URL = (
     "https://888starz.bet/service-api/LiveFeed/Get1x2_VZip"
     "?sports=85&count=80&lng=fr&gr=789&mode=4&country=96"
     "&partner=233&getEmpty=true&virtualSports=true&noFilterBlockEvent=true"
 )
-PREDICTION_API_URL = "https://ai-p-hcuo.onrender.com/api/predict"
+API_URL_1XBET = (
+    "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip"
+    "?sports=85&count=40&lng=fr&gr=285&mode=4&country=96"
+    "&getEmpty=true&virtualSports=true&noFilterBlockEvent=true"
+)
 CHAT_API_KEY = os.environ.get("FURY_CHAT_API_KEY", "devx-s3lkpld19bvhbsv2ex5omi1b2vjet5a5")
 CHAT_API_URL = "https://aimodelapi.onrender.com/v1/chat/completions"
 CHAT_MODEL = "deepseek-r1"
+PREDICTION_API_URL = "https://top-modele-train-api.onrender.com/predict"
 
 
 class FuryRequestHandler(BaseHTTPRequestHandler):
@@ -35,7 +39,7 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         file_path = (BASE_DIR / relative_path).resolve()
 
         if BASE_DIR not in file_path.parents and file_path != BASE_DIR / "index.html":
-            self.send_error(403, "Accès refusé")
+            self.send_error(403, "AccÃ¨s refusÃ©")
             return
 
         if not file_path.exists() or not file_path.is_file():
@@ -63,7 +67,16 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         self.write_response_body(payload)
 
     def proxy_matches(self):
-        request = Request(
+        payload, status, content_type = self.fetch_matches_with_fallback()
+
+        self.send_response(status)
+        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.write_response_body(payload)
+
+    def fetch_matches_with_fallback(self):
+        primary_request = Request(
             API_URL,
             headers={
                 "accept": "application/json,text/plain,*/*",
@@ -77,24 +90,45 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         )
 
         try:
-            with open_url_with_retry(request, timeout=20) as response:
+            with open_url_with_retry(primary_request, timeout=20) as response:
                 payload = response.read()
                 status = response.getcode()
                 content_type = response.headers.get_content_type()
+                return payload, status, content_type
         except HTTPError as error:
-            payload = error.read() or json.dumps({"error": str(error)}).encode("utf-8")
+            primary_error = error
+        except (URLError, RemoteDisconnected, SocketTimeout, ssl.SSLError) as error:
+            primary_error = error
+
+        backup_request = Request(
+            API_URL_1XBET,
+            headers={
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "accept-language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+                "cache-control": "max-age=0",
+                "user-agent": (
+                    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
+                ),
+            },
+        )
+
+        try:
+            with open_url_with_retry(backup_request, timeout=20) as response:
+                payload = response.read()
+                status = response.getcode()
+                content_type = response.headers.get_content_type()
+                return payload, status, content_type
+        except HTTPError as error:
+            payload = error.read() or json.dumps({"error": f"Primary API failed: {primary_error}. Backup API failed: {error}"}).encode("utf-8")
             status = error.code
             content_type = "application/json"
+            return payload, status, content_type
         except (URLError, RemoteDisconnected, SocketTimeout, ssl.SSLError) as error:
-            payload = json.dumps({"error": describe_network_error(error)}).encode("utf-8")
+            payload = json.dumps({"error": f"Primary API failed: {describe_network_error(primary_error)}. Backup API failed: {describe_network_error(error)}"}).encode("utf-8")
             status = 502
             content_type = "application/json"
-
-        self.send_response(status)
-        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.write_response_body(payload)
+            return payload, status, content_type
 
     def proxy_assistant(self):
         try:
@@ -135,37 +169,25 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         try:
             request_body = self.read_json_body()
             match = request_body.get("match", {})
-            payload = build_prediction_payload(match)
+            prediction = call_prediction_api(match)
+            self.send_json(
+                {
+                    "provider": "top-modele-train-api",
+                    "prediction": prediction,
+                }
+            )
         except ValueError as error:
             self.send_json({"error": str(error)}, 400)
-            return
-
-        request = Request(
-            PREDICTION_API_URL,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0",
-            },
-            method="POST",
-        )
-
-        try:
-            with open_url_with_retry(request, timeout=30) as response:
-                prediction_payload = json.loads(response.read().decode("utf-8"))
-                self.send_json(
-                    {
-                        "provider": prediction_payload.get("source", "ONE DELUX AI"),
-                        "input": payload,
-                        "prediction": prediction_payload,
-                    },
-                    response.getcode(),
-                )
         except HTTPError as error:
             error_payload = error.read().decode("utf-8", errors="replace")
-            self.send_json({"error": error_payload or str(error)}, error.code)
-        except (URLError, RemoteDisconnected, SocketTimeout, ssl.SSLError) as error:
+            try:
+                parsed_payload = json.loads(error_payload) if error_payload else {}
+            except json.JSONDecodeError:
+                parsed_payload = {"error": error_payload or str(error)}
+            if isinstance(parsed_payload, dict) and parsed_payload.get("detail") and not parsed_payload.get("error"):
+                parsed_payload["error"] = parsed_payload["detail"]
+            self.send_json(parsed_payload or {"error": str(error)}, error.code)
+        except URLError as error:
             self.send_json({"error": describe_network_error(error)}, 502)
 
     def read_json_body(self):
@@ -174,7 +196,7 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         try:
             return json.loads(raw_body.decode("utf-8"))
         except json.JSONDecodeError as error:
-            raise ValueError(f"Requête invalide: {error}") from error
+            raise ValueError(f"RequÃªte invalide: {error}") from error
 
     def send_json(self, payload, status=200):
         body = json.dumps(payload).encode("utf-8")
@@ -195,8 +217,8 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
 
 
 def run():
-    server = HTTPServer(("0.0.0.0", PORT), FuryRequestHandler)
-    print(f"Fury X One disponible sur http://0.0.0.0:{PORT}")
+    server = HTTPServer(("127.0.0.1", PORT), FuryRequestHandler)
+    print(f"Fury X One disponible sur http://localhost:{PORT}")
     server.serve_forever()
 
 
@@ -242,11 +264,138 @@ def call_chat_api(messages):
         data = json.loads(response.read().decode("utf-8"))
     choices = data.get("choices") or []
     if not choices:
-        raise ValueError("Réponse IA vide")
+        raise ValueError("RÃ©ponse IA vide")
     content = choices[0].get("message", {}).get("content", "").strip()
     if not content:
-        raise ValueError("Réponse IA sans contenu")
+        raise ValueError("RÃ©ponse IA sans contenu")
     return content
+
+
+def call_prediction_api(match):
+    payload = build_prediction_request(match)
+    request = Request(
+        PREDICTION_API_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    with open_url_with_retry(request, timeout=30) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    return normalize_prediction_response(data, payload)
+
+
+def build_prediction_request(match):
+    team_home = str(match.get("O1E") or match.get("O1") or "").strip()
+    team_away = str(match.get("O2E") or match.get("O2") or "").strip()
+    league = str(match.get("LE") or match.get("L") or "").strip()
+
+    if not team_home or not team_away or not league:
+        raise ValueError("Match invalide: équipe domicile, équipe extérieure et ligue sont requis.")
+
+    return {
+        "team_home": team_home,
+        "team_away": team_away,
+        "league": league,
+    }
+
+
+def normalize_prediction_response(payload, request_payload):
+    predictions = payload.get("predictions")
+    if not isinstance(predictions, dict):
+        return payload
+
+    result_probabilities = normalize_result_probabilities(predictions.get("1x2"))
+    result_prediction = select_best_prediction(result_probabilities)
+    parity_probabilities = predictions.get("parity") or {}
+    parity_prediction = select_best_prediction(
+        {
+            "pair": parity_probabilities.get("pair"),
+            "impair": parity_probabilities.get("impair"),
+        }
+    )
+
+    return {
+        "match": payload.get("match") or f"{request_payload['team_home']} vs {request_payload['team_away']}",
+        "league": payload.get("league") or request_payload["league"],
+        "family": payload.get("family") or "-",
+        "result": {
+            "prediction": result_prediction,
+            "probabilities": result_probabilities,
+        },
+        "total_goals": {
+            "prediction": (predictions.get("total_goals") or {}).get("predicted"),
+            "over_under": (predictions.get("total_goals") or {}).get("over_under") or {},
+        },
+        "parity": {
+            "prediction": parity_prediction,
+            "prob_pair": parity_probabilities.get("pair"),
+            "prob_impair": parity_probabilities.get("impair"),
+        },
+        "exact_score": predictions.get("exact_score") or {"prediction": None},
+        "handicap": {
+            "lines": predictions.get("handicap") or {},
+            "recommended": get_best_handicap_prediction(predictions.get("handicap") or {}),
+        },
+        "raw": payload,
+    }
+
+
+def normalize_result_probabilities(probabilities):
+    values = probabilities or {}
+    return {
+        "H": values.get("home"),
+        "D": values.get("draw"),
+        "A": values.get("away"),
+    }
+
+
+def select_best_prediction(probabilities):
+    best_code = None
+    best_value = float("-inf")
+
+    for code, raw_value in (probabilities or {}).items():
+        if raw_value is None:
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if value > best_value:
+            best_code = code
+            best_value = value
+
+    return best_code
+
+
+def get_best_handicap_prediction(handicap_lines):
+    best_line = None
+    best_code = None
+    best_probabilities = None
+    best_value = float("-inf")
+
+    for line, probabilities in (handicap_lines or {}).items():
+        normalized = normalize_result_probabilities(probabilities)
+        code = select_best_prediction(normalized)
+        if not code or normalized.get(code) is None:
+            continue
+        value = float(normalized[code])
+        if value > best_value:
+            best_line = line
+            best_code = code
+            best_probabilities = normalized
+            best_value = value
+
+    if not best_line or not best_code:
+        return None
+
+    return {
+        "line": best_line,
+        "prediction": best_code,
+        "probabilities": best_probabilities,
+    }
 
 
 def normalize_chat_messages(messages):
@@ -289,8 +438,8 @@ def build_assistant_shortcut_reply(messages, site_context):
             available_matches.append(
                 {
                     "league": match.get("LE") or match.get("L") or league.get("name", "Ligue inconnue"),
-                    "home": match.get("O1", "Équipe 1"),
-                    "away": match.get("O2", "Équipe 2"),
+                    "home": match.get("O1", "Ã‰quipe 1"),
+                    "away": match.get("O2", "Ã‰quipe 2"),
                     "status": match.get("TN", "Statut inconnu"),
                     "priority": get_match_priority(match),
                 }
@@ -303,8 +452,8 @@ def build_assistant_shortcut_reply(messages, site_context):
     picks = available_matches[:4]
     lines = ["Voici quelques matchs disponibles en ce moment :"]
     for item in picks:
-        lines.append(f"- {item['home']} vs {item['away']} · {item['league']} · {item['status']}")
-    lines.append("Si tu veux, je peux aussi te proposer seulement les matchs en direct ou dans une ligue précise.")
+        lines.append(f"- {item['home']} vs {item['away']} Â· {item['league']} Â· {item['status']}")
+    lines.append("Si tu veux, je peux aussi te proposer seulement les matchs en direct ou dans une ligue prÃ©cise.")
     return "\n".join(lines)
 
 
@@ -326,18 +475,18 @@ def build_assistant_system_prompt(page_context, site_context):
     league_context = page_context.get("leagueContext")
     parts = [
         "Tu es l'assistant global du site Fury X One.",
-        "Réponds en français simple et court.",
-        "Aide l'utilisateur à comprendre les pages, les ligues, les matchs, les statuts et les marchés.",
-        "N'invente jamais des informations absentes du contexte reçu.",
+        "RÃ©ponds en franÃ§ais simple et court.",
+        "Aide l'utilisateur Ã  comprendre les pages, les ligues, les matchs, les statuts et les marchÃ©s.",
+        "N'invente jamais des informations absentes du contexte reÃ§u.",
         "Si une information manque, dis-le clairement.",
-        "Quand l'utilisateur demande de trouver un match, de proposer un match, ou parle d'un match sans précision, utilise d'abord les matchs déjà présents dans le contexte du site.",
-        "Dans ce cas, propose directement 3 à 5 matchs disponibles avec leur ligue et leur statut au lieu de redemander une précision.",
-        "Ne demande une précision que si aucun match exploitable n'est présent dans le contexte.",
-        "Si plusieurs matchs existent, privilégie ceux en direct ou à la mi-temps.",
+        "Quand l'utilisateur demande de trouver un match, de proposer un match, ou parle d'un match sans prÃ©cision, utilise d'abord les matchs dÃ©jÃ  prÃ©sents dans le contexte du site.",
+        "Dans ce cas, propose directement 3 Ã  5 matchs disponibles avec leur ligue et leur statut au lieu de redemander une prÃ©cision.",
+        "Ne demande une prÃ©cision que si aucun match exploitable n'est prÃ©sent dans le contexte.",
+        "Si plusieurs matchs existent, privilÃ©gie ceux en direct ou Ã  la mi-temps.",
         f"Route actuelle: {route}.",
         f"Page actuelle: {current_page}.",
-        f"Nombre total de ligues chargées: {page_context.get('leaguesCount', 0)}.",
-        f"Nombre total de matchs chargés: {page_context.get('matchesCount', 0)}.",
+        f"Nombre total de ligues chargÃ©es: {page_context.get('leaguesCount', 0)}.",
+        f"Nombre total de matchs chargÃ©s: {page_context.get('matchesCount', 0)}.",
     ]
     if match_context:
         parts.append(f"Contexte match actuel: {json.dumps(match_context, ensure_ascii=False)}.")
@@ -346,58 +495,6 @@ def build_assistant_system_prompt(page_context, site_context):
     if site_context:
         parts.append(f"Contexte global du site: {json.dumps(site_context, ensure_ascii=False)}.")
     return " ".join(parts)
-
-
-def build_prediction_payload(match):
-    home_odds = get_market_odds(match, 1, 2.0)
-    draw_odds = get_market_odds(match, 3, 3.0)
-    away_odds = get_market_odds(match, 2, 2.0)
-    current_home = get_score(match, "S1") if has_live_score(match) else 0
-    current_away = get_score(match, "S2") if has_live_score(match) else 0
-    total_goals = current_home + current_away
-    league_name = match.get("LE") or match.get("L") or "Unknown League"
-
-    return {
-        "league": league_name,
-        "home_team": match.get("O1") or "Home",
-        "away_team": match.get("O2") or "Away",
-        "home_odds": home_odds,
-        "draw_odds": draw_odds,
-        "away_odds": away_odds,
-        "match_datetime": format_match_datetime(match.get("S")),
-        "home_form_rate": derive_form_rate(current_home, current_away, home=True),
-        "away_form_rate": derive_form_rate(current_home, current_away, home=False),
-        "home_attack_avg": derive_attack_avg(current_home),
-        "away_attack_avg": derive_attack_avg(current_away),
-        "home_defense_avg": derive_defense_avg(current_away),
-        "away_defense_avg": derive_defense_avg(current_home),
-        "head_to_head_matches": 0,
-        "head_to_head_home_winrate": 0.5,
-        "game_mode": infer_game_mode(league_name),
-        "game_version": infer_game_version(league_name),
-    }
-
-
-def format_match_datetime(timestamp):
-    if not timestamp:
-        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def derive_form_rate(home_score, away_score, home=True):
-    total = home_score + away_score
-    if total == 0:
-        return 0.5
-    value = (home_score if home else away_score) / total
-    return round(min(max(value, 0.15), 0.85), 3)
-
-
-def derive_attack_avg(goals):
-    return round(min(max(1.5 + goals * 0.35, 1.5), 8.0), 3)
-
-
-def derive_defense_avg(goals_conceded):
-    return round(min(max(1.2 + goals_conceded * 0.25, 1.2), 8.0), 3)
 
 
 def infer_game_mode(league_name):
@@ -426,16 +523,6 @@ def infer_game_version(league_name):
     if "FIFA23" in value:
         return "FIFA23"
     return "FC26"
-
-
-def get_market_odds(match, bet_type, fallback):
-    for market in match.get("E", []):
-        if market.get("T") == bet_type:
-            try:
-                return float(market.get("C", fallback))
-            except (TypeError, ValueError):
-                return fallback
-    return fallback
 
 
 def get_score(match, side):
