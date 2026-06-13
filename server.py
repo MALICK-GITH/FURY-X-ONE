@@ -76,6 +76,7 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         self.write_response_body(payload)
 
     def fetch_matches_with_fallback(self):
+        print(f"[API] Tentative source principale: 888starz")
         primary_request = Request(
             API_URL,
             headers={
@@ -102,12 +103,16 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
                 payload = response.read()
                 status = response.getcode()
                 content_type = response.headers.get_content_type()
+                print(f"[API] Source principale 888starz OK - Status: {status}")
                 return payload, status, content_type
         except HTTPError as error:
             primary_error = error
+            print(f"[API] Source principale 888starz échouée (HTTPError: {error.code})")
         except (URLError, RemoteDisconnected, SocketTimeout, ssl.SSLError) as error:
             primary_error = error
+            print(f"[API] Source principale 888starz échouée ({type(error).__name__})")
 
+        print(f"[API] Tentative source secours: 1xbet")
         backup_request = Request(
             API_URL_1XBET,
             headers={
@@ -135,13 +140,16 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
                 payload = response.read()
                 status = response.getcode()
                 content_type = response.headers.get_content_type()
+                print(f"[API] Source secours 1xbet OK - Status: {status}")
                 return payload, status, content_type
         except HTTPError as error:
+            print(f"[API] Source secours 1xbet échouée (HTTPError: {error.code})")
             payload = error.read() or json.dumps({"error": f"Primary API failed: {primary_error}. Backup API failed: {error}"}).encode("utf-8")
             status = error.code
             content_type = "application/json"
             return payload, status, content_type
         except (URLError, RemoteDisconnected, SocketTimeout, ssl.SSLError) as error:
+            print(f"[API] Source secours 1xbet échouée ({type(error).__name__})")
             payload = json.dumps({"error": f"Primary API failed: {describe_network_error(primary_error)}. Backup API failed: {describe_network_error(error)}"}).encode("utf-8")
             status = 502
             content_type = "application/json"
