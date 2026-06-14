@@ -4,6 +4,7 @@ from pathlib import Path
 from socket import timeout as SocketTimeout
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 import json
 import mimetypes
 import os
@@ -13,48 +14,51 @@ import time
 
 PORT = 3000
 BASE_DIR = Path(__file__).resolve().parent
+MATCH_FEED_COUNT = 200
 API_URL = (
     "https://888starz.bet/service-api/LiveFeed/Get1x2_VZip"
-    "?sports=85&count=40&lng=fr&gr=789&mode=4&country=96"
+    f"?sports=85&count={MATCH_FEED_COUNT}&lng=fr&gr=789&mode=4&country=96"
     "&partner=233&getEmpty=true&virtualSports=true&noFilterBlockEvent=true"
 )
 API_URL_1XBET = (
     "https://1xbet.com/service-api/LiveFeed/Get1x2_VZip"
-    "?sports=85&count=40&lng=fr&gr=285&mode=4&country=96"
+    f"?sports=85&count={MATCH_FEED_COUNT}&lng=fr&gr=285&mode=4&country=96"
     "&getEmpty=true&virtualSports=true&noFilterBlockEvent=true"
 )
 CHAT_API_KEY = os.environ.get("FURY_CHAT_API_KEY", "devx-s3lkpld19bvhbsv2ex5omi1b2vjet5a5")
 CHAT_API_URL = "https://aimodelapi.onrender.com/v1/chat/completions"
 CHAT_MODEL = "deepseek-r1"
-PREDICTION_API_URL = "https://top-modele-train-api.onrender.com/predict"
+PREDICTION_API_BASE_URL = "https://top-modele-train-api.onrender.com"
+PREDICTION_API_URL = f"{PREDICTION_API_BASE_URL}/predict"
 
 
 class FuryRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/api/matches":
+        request_path = urlsplit(self.path).path
+        if request_path == "/api/matches":
             self.proxy_matches()
             return
-        if self.path == "/api/public/matches":
+        if request_path == "/api/public/matches":
             self.public_api_matches()
             return
-        if self.path == "/api/public/leagues":
+        if request_path == "/api/public/leagues":
             self.public_api_leagues()
             return
-        if self.path == "/api/public/stats":
+        if request_path == "/api/public/stats":
             self.public_api_stats()
             return
-        if self.path == "/api/fifa/health":
+        if request_path == "/api/fifa/health":
             self.fifa_health_check()
             return
-        if self.path == "/api/fifa/families":
+        if request_path == "/api/fifa/families":
             self.fifa_families()
             return
-        if self.path.startswith("/api/fifa/leagues/"):
-            family = self.path.split("/")[-1]
+        if request_path.startswith("/api/fifa/leagues/"):
+            family = request_path.split("/")[-1]
             self.fifa_leagues(family)
             return
 
-        relative_path = "index.html" if self.path in ("/", "") else self.path.lstrip("/")
+        relative_path = "index.html" if request_path in ("/", "") else request_path.lstrip("/")
         file_path = (BASE_DIR / relative_path).resolve()
 
         if BASE_DIR not in file_path.parents and file_path != BASE_DIR / "index.html":
@@ -266,7 +270,7 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
             matches = data.get("Value", [])
 
             simplified_matches = []
-            for match in matches[:50]:
+            for match in matches:
                 simplified_matches.append({
                     "id": match.get("I"),
                     "team1": match.get("O1"),
@@ -343,7 +347,7 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
 
     def fifa_health_check(self):
         try:
-            request = Request(f"{PREDICTION_API_URL}/health")
+            request = Request(f"{PREDICTION_API_BASE_URL}/health")
             with open_url_with_retry(request, timeout=10) as response:
                 payload = response.read()
                 self.send_json(json.loads(payload.decode("utf-8")))
@@ -352,7 +356,7 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
 
     def fifa_families(self):
         try:
-            request = Request(f"{PREDICTION_API_URL}/families")
+            request = Request(f"{PREDICTION_API_BASE_URL}/families")
             with open_url_with_retry(request, timeout=10) as response:
                 payload = response.read()
                 self.send_json(json.loads(payload.decode("utf-8")))
@@ -361,7 +365,7 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
 
     def fifa_leagues(self, family):
         try:
-            request = Request(f"{PREDICTION_API_URL}/leagues/{family}")
+            request = Request(f"{PREDICTION_API_BASE_URL}/leagues/{family}")
             with open_url_with_retry(request, timeout=10) as response:
                 payload = response.read()
                 self.send_json(json.loads(payload.decode("utf-8")))

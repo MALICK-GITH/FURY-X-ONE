@@ -35,6 +35,11 @@ const assistantInput = document.getElementById("assistant-input");
 
 const state = {
   leagues: [],
+  predictionApi: {
+    health: null,
+    families: {},
+    leaguesByFamily: {}
+  },
   loading: true,
   error: "",
   activeLeagueFilter: "all",
@@ -49,6 +54,7 @@ const state = {
     }
   ],
   couponMatches: [],
+  couponMessage: "",
   couponCount: 3,
   couponThreshold: "safe"
 };
@@ -94,6 +100,27 @@ function getLeagueFilterOptions() {
     { id: "3x3", label: "3x3" },
     { id: "champions", label: "Ligue des champions" }
   ];
+}
+
+function getPredictionFamilyEntries() {
+  return Object.entries(state.predictionApi.families || {});
+}
+
+function getPredictionFamilyForLeagueName(leagueName) {
+  for (const [familyName, familyConfig] of getPredictionFamilyEntries()) {
+    const pattern = familyConfig?.pattern;
+    if (!pattern) {
+      continue;
+    }
+    try {
+      if (new RegExp(pattern, "i").test(String(leagueName || ""))) {
+        return familyName;
+      }
+    } catch (_) {
+      continue;
+    }
+  }
+  return "CLASSIC";
 }
 
 function getFilteredLeagues() {
@@ -222,7 +249,7 @@ function getCompactMatchInfo(match) {
   return [getDisplayStatus(match), getDisplayPhase(match), getDisplayTime(match)].filter(Boolean).join(" · ");
 }
 
-function renderHome() {
+function legacyRenderHome() {
   const matches = getAllMatches();
   const filteredLeagues = getFilteredLeagues();
   const filteredMatches = filteredLeagues.flatMap((league) => league.matches);
@@ -241,6 +268,90 @@ function renderHome() {
       <div class="actions">
         <button class="button" onclick="exportMatchesToCSV(getAllMatches())">Exporter CSV</button>
         <button class="button" onclick="generatePDFReport(getAllMatches())">Rapport PDF</button>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading">
+        <h2>API Prédictions</h2>
+        <p class="muted">Santé, familles et ligues supportées.</p>
+      </div>
+      <div class="grid leagues">
+        <article class="card">
+          <h3>Statut moteur</h3>
+          <p><strong>${escapeHtml(state.predictionApi.health?.status || "Inconnu")}</strong></p>
+          <p class="muted">Modèles chargés: ${escapeHtml(state.predictionApi.health?.models_loaded ? "Oui" : "Non")}</p>
+        </article>
+        ${getPredictionFamilyEntries().map(([familyName, familyConfig]) => `
+          <article class="card">
+            <h3>${escapeHtml(familyName)}</h3>
+            <p>${escapeHtml(familyConfig.description || "")}</p>
+            <p class="muted">Ligues: ${escapeHtml((state.predictionApi.leaguesByFamily[familyName] || []).length)}</p>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading">
+        <h2>API Prédictions</h2>
+        <p class="muted">Santé, familles et ligues supportées.</p>
+      </div>
+      <div class="grid leagues">
+        <article class="card">
+          <h3>Statut moteur</h3>
+          <p><strong>${escapeHtml(state.predictionApi.health?.status || "Inconnu")}</strong></p>
+          <p class="muted">Modèles chargés: ${escapeHtml(state.predictionApi.health?.models_loaded ? "Oui" : "Non")}</p>
+        </article>
+        ${getPredictionFamilyEntries().map(([familyName, familyConfig]) => `
+          <article class="card">
+            <h3>${escapeHtml(familyName)}</h3>
+            <p>${escapeHtml(familyConfig.description || "")}</p>
+            <p class="muted">Ligues: ${escapeHtml((state.predictionApi.leaguesByFamily[familyName] || []).length)}</p>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading">
+        <h2>API PrÃ©dictions</h2>
+        <p class="muted">SantÃ©, familles et ligues supportÃ©es.</p>
+      </div>
+      <div class="grid leagues">
+        <article class="card">
+          <h3>Statut moteur</h3>
+          <p><strong>${escapeHtml(state.predictionApi.health?.status || "Inconnu")}</strong></p>
+          <p class="muted">ModÃ¨les chargÃ©s: ${escapeHtml(state.predictionApi.health?.models_loaded ? "Oui" : "Non")}</p>
+        </article>
+        ${getPredictionFamilyEntries().map(([familyName, familyConfig]) => `
+          <article class="card">
+            <h3>${escapeHtml(familyName)}</h3>
+            <p>${escapeHtml(familyConfig.description || "")}</p>
+            <p class="muted">Ligues: ${escapeHtml((state.predictionApi.leaguesByFamily[familyName] || []).length)}</p>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading">
+        <h2>API PrÃ©dictions</h2>
+        <p class="muted">SantÃ©, familles et ligues supportÃ©es.</p>
+      </div>
+      <div class="grid leagues">
+        <article class="card">
+          <h3>Statut moteur</h3>
+          <p><strong>${escapeHtml(state.predictionApi.health?.status || "Inconnu")}</strong></p>
+          <p class="muted">ModÃ¨les chargÃ©s: ${escapeHtml(state.predictionApi.health?.models_loaded ? "Oui" : "Non")}</p>
+        </article>
+        ${getPredictionFamilyEntries().map(([familyName, familyConfig]) => `
+          <article class="card">
+            <h3>${escapeHtml(familyName)}</h3>
+            <p>${escapeHtml(familyConfig.description || "")}</p>
+            <p class="muted">Ligues: ${escapeHtml((state.predictionApi.leaguesByFamily[familyName] || []).length)}</p>
+          </article>
+        `).join("")}
       </div>
     </section>
 
@@ -276,6 +387,12 @@ function renderHome() {
       </div>
     </section>
   `;
+
+  const cacheKey = String(match.I);
+  const cachedPrediction = state.predictionCache[cacheKey];
+  if (!cachedPrediction || (!cachedPrediction.loading && !cachedPrediction.data && !cachedPrediction.error)) {
+    loadPrediction(match);
+  }
 }
 
 function renderLeagueCard(league) {
@@ -298,7 +415,7 @@ function renderLeagueCard(league) {
   `;
 }
 
-function renderLeague(leagueId) {
+function legacyRenderLeague(leagueId) {
   const league = state.leagues.find((item) => String(item.id) === String(leagueId));
   if (!league) {
     app.innerHTML = `<div class="card"><h2>Ligue introuvable</h2><a class="button-secondary" href="#/">Retour</a></div>`;
@@ -369,7 +486,7 @@ function renderMatchCard(match) {
   `;
 }
 
-function renderPredictionDetails(matchId) {
+function legacyRenderPredictionDetails(matchId) {
   const match = getMatchById(matchId);
   if (!match) {
     app.innerHTML = `<div class="card"><h2>Match introuvable</h2><a class="button-secondary" href="#/">Retour</a></div>`;
@@ -478,7 +595,7 @@ function renderPredictionDetails(matchId) {
   }
 }
 
-function renderPredictionModule(match, predictionState) {
+function legacyRenderPredictionModule(match, predictionState) {
   if (predictionState.loading) {
     return `<div class="market-item"><p>Chargement de la prédiction...</p></div>`;
   }
@@ -856,6 +973,25 @@ async function loadPrediction(match) {
   }
 }
 
+async function ensureCurrentMatchPredictionContext() {
+  const hash = window.location.hash || "#/";
+  const [, route, id] = hash.split("/");
+  if (route !== "prediction") {
+    return;
+  }
+
+  const match = getMatchById(id);
+  if (!match) {
+    return;
+  }
+
+  const key = String(match.I);
+  const cachedPrediction = state.predictionCache[key];
+  if (!cachedPrediction || (!cachedPrediction.data && !cachedPrediction.loading && !cachedPrediction.error)) {
+    await loadPrediction(match);
+  }
+}
+
 function getCurrentPageContext() {
   const hash = window.location.hash || "#/";
   const [, route, id] = hash.split("/");
@@ -899,7 +1035,100 @@ function buildAssistantRequestPayload() {
   };
 }
 
-function renderAssistantMessages() {
+
+function parseAssistantCommand(content) {
+  const value = String(content || "").trim().toLowerCase();
+  if (!value) return null;
+
+  if (value.includes("va dans la page coupon") || value.includes("ouvre la page coupon")) {
+    return { type: "open_coupon" };
+  }
+
+  const couponMatch = value.match(/g[?e]n[?e]re moi un coupon(?: d(?:e|u)ne?| de)? cote?\s*(\d+)/i);
+  if (couponMatch) {
+    return { type: "generate_coupon", count: Number(couponMatch[1]) || state.couponCount };
+  }
+
+  const searchMatch = value.match(/(?:lance une recherche|donne-moi le match|donne moi le match|cherche.*match).*?(\d+)\s*min/i);
+  if (searchMatch) {
+    return { type: "find_match_by_start_window", minutes: Number(searchMatch[1]) };
+  }
+
+  return null;
+}
+
+function getMinutesUntilStart(match) {
+  const startTimestamp = Number(match?.S || 0);
+  if (!startTimestamp) return null;
+  return Math.round((startTimestamp * 1000 - Date.now()) / 60000);
+}
+
+async function findBestPredictedMatchInWindow(minutesWindow) {
+  const matches = getAllMatches().filter((match) => {
+    const minutesUntilStart = getMinutesUntilStart(match);
+    return minutesUntilStart !== null && minutesUntilStart >= 0 && minutesUntilStart <= minutesWindow;
+  });
+
+  if (!matches.length) {
+    return { message: `Aucun match ne commence dans les ${minutesWindow} prochaines minutes.` };
+  }
+
+  let bestCandidate = null;
+  for (const match of matches.slice(0, 12)) {
+    const key = String(match.I);
+    let predictionState = state.predictionCache[key];
+    if (!predictionState?.data) {
+      await loadPrediction(match);
+      predictionState = state.predictionCache[key];
+    }
+    const prediction = predictionState?.data?.prediction;
+    if (!prediction?.result?.prediction) {
+      continue;
+    }
+    const confidence = getMainConfidence(prediction.result?.probabilities || {}, prediction.result?.prediction);
+    if (!bestCandidate || Number(confidence) > Number(bestCandidate.confidence)) {
+      bestCandidate = { match, prediction, confidence };
+    }
+  }
+
+  if (!bestCandidate) {
+    return { message: `Je n'ai pas trouv? de pr?diction exploitable dans les ${minutesWindow} prochaines minutes.` };
+  }
+
+  window.location.hash = `#/prediction/${bestCandidate.match.I}`;
+  return {
+    message: `${bestCandidate.match.O1} vs ${bestCandidate.match.O2} commence dans ${getMinutesUntilStart(bestCandidate.match)} min. Pronostic principal: ${getResultLabel(bestCandidate.prediction.result?.prediction, bestCandidate.match)} avec confiance ${bestCandidate.confidence}.`
+  };
+}
+
+async function executeAssistantCommand(command) {
+  if (!command) return null;
+
+  if (command.type === "open_coupon") {
+    window.location.hash = "#/coupon";
+    return "J?ouvre la page coupon.";
+  }
+
+  if (command.type === "generate_coupon") {
+    window.location.hash = "#/coupon";
+    state.couponCount = Math.max(1, Math.min(10, Number(command.count) || state.couponCount));
+    renderCouponPage();
+    await generateCoupon();
+    if (state.couponMatches.length > 0) {
+      return `Coupon g?n?r? avec ${state.couponMatches.length} match(s).`;
+    }
+    return state.couponMessage || "Je n?ai pas pu g?n?rer de coupon.";
+  }
+
+  if (command.type === "find_match_by_start_window") {
+    const result = await findBestPredictedMatchInWindow(command.minutes);
+    return result?.message || null;
+  }
+
+  return null;
+}
+
+function legacyRenderAssistantMessages() {
   assistantMessagesEl.innerHTML = state.assistantMessages
     .map((message) => `<div class="assistant-bubble ${message.role}">${escapeHtml(message.content)}</div>`)
     .join("");
@@ -925,6 +1154,16 @@ async function handleAssistantSubmit(event) {
   renderAssistantMessages();
 
   try {
+    await ensureCurrentMatchPredictionContext();
+
+    const assistantCommand = parseAssistantCommand(content);
+    const localReply = await executeAssistantCommand(assistantCommand);
+    if (localReply) {
+      state.assistantMessages.push({ role: "assistant", content: localReply });
+      renderAssistantMessages();
+      return;
+    }
+
     const response = await fetch("/api/assistant", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -938,12 +1177,13 @@ async function handleAssistantSubmit(event) {
   } catch (error) {
     state.assistantMessages.push({
       role: "assistant",
-      content: `Je n’ai pas pu répondre pour le moment : ${error.message}`
+      content: `Je n?ai pas pu r?pondre pour le moment : ${error.message}`
     });
   }
 
   renderAssistantMessages();
 }
+
 
 
 function router() {
@@ -984,12 +1224,31 @@ async function bootstrap() {
   router();
 
   try {
-    const response = await fetch("/api/matches");
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    const [matchesResponse, healthResponse, familiesResponse] = await Promise.all([
+      fetch("/api/matches"),
+      fetch("/api/fifa/health"),
+      fetch("/api/fifa/families")
+    ]);
+    if (!matchesResponse.ok) {
+      throw new Error(`HTTP ${matchesResponse.status}`);
     }
-    const payload = await response.json();
+    const payload = await matchesResponse.json();
     state.leagues = normalizeLeagues(Array.isArray(payload?.Value) ? payload.Value : []);
+    state.predictionApi.health = healthResponse.ok ? await healthResponse.json() : null;
+    const familiesPayload = familiesResponse.ok ? await familiesResponse.json() : {};
+    state.predictionApi.families = familiesPayload?.families || {};
+    const familyNames = Object.keys(state.predictionApi.families);
+    const leaguesPayloads = await Promise.all(
+      familyNames.map((familyName) =>
+        fetch(`/api/fifa/leagues/${encodeURIComponent(familyName)}`)
+          .then((response) => response.ok ? response.json() : null)
+          .catch(() => null)
+      )
+    );
+    state.predictionApi.leaguesByFamily = {};
+    leaguesPayloads.forEach((familyPayload, index) => {
+      state.predictionApi.leaguesByFamily[familyNames[index]] = familyPayload?.leagues || [];
+    });
   } catch (error) {
     state.error = `Impossible de charger l’API live : ${error.message}`;
   } finally {
@@ -1262,7 +1521,7 @@ function renderCouponPage() {
         <div class="coupon-actions">
           <button class="button" onclick="exportCouponImage()">Créer l'image du Coupon</button>
         </div>
-      ` : '<p class="muted">Cliquez sur "Générer le Coupon" pour créer un nouveau coupon.</p>'}
+      ` : `<p class="muted">${escapeHtml(state.couponMessage || 'Cliquez sur "G?n?rer le Coupon" pour cr?er un nouveau coupon.')}</p>`}
     </section>
   `;
 }
@@ -1276,48 +1535,51 @@ function setCouponThreshold(threshold) {
   state.couponThreshold = threshold;
   renderCouponPage();
 }
-
 async function generateCoupon() {
   const matches = getAllMatches();
   const availableMatches = matches.filter(m => isPrematchState(m) || isLiveState(m));
-  
+
+  state.couponMessage = "";
+
   if (availableMatches.length < state.couponCount) {
-    alert("Pas assez de matchs disponibles pour générer ce coupon.");
+    state.couponMatches = [];
+    state.couponMessage = "Pas assez de matchs disponibles pour g?n?rer ce coupon.";
+    renderCouponPage();
     return;
   }
 
   const thresholdConfig = {
-    safe: { minConfidence: 70, maxMatches: 3 },
-    super_safe: { minConfidence: 85, maxMatches: 2 },
-    aggressive: { minConfidence: 55, maxMatches: 5 }
+    safe: { minConfidence: 70, scanCount: 12 },
+    super_safe: { minConfidence: 85, scanCount: 16 },
+    aggressive: { minConfidence: 55, scanCount: 20 }
   };
 
   const config = thresholdConfig[state.couponThreshold];
-  const selectedMatches = availableMatches.slice(0, state.couponCount);
-  
+  const selectedMatches = availableMatches.slice(0, Math.min(availableMatches.length, config.scanCount));
+
   state.couponMatches = [];
+  const candidates = [];
 
   for (const match of selectedMatches) {
     try {
       const response = await fetch("/api/prediction", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ match_id: match.I })
+        body: JSON.stringify({ match })
       });
       const data = await response.json();
       const prediction = data.prediction;
-      const rawPrediction = data.raw || prediction;
-      
-      const x1x2 = rawPrediction.predictions?.["1x2"] || {};
+      const rawPrediction = prediction?.raw || data.raw || prediction;
       const probabilities = prediction.result?.probabilities || {};
       const confidence = getMainConfidence(probabilities, prediction.result?.prediction);
-      
+
       if (confidence >= config.minConfidence) {
-        state.couponMatches.push({
-          match: match,
+        candidates.push({
+          match,
           prediction: getResultLabel(prediction.result?.prediction, match),
-          confidence: confidence,
-          rawPrediction: rawPrediction
+          confidence,
+          rawPrediction,
+          family: prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L)
         });
       }
     } catch (error) {
@@ -1325,11 +1587,16 @@ async function generateCoupon() {
     }
   }
 
+  candidates.sort((left, right) => Number(right.confidence) - Number(left.confidence));
+  state.couponMatches = candidates.slice(0, state.couponCount);
+
   if (state.couponMatches.length === 0) {
-    alert("Aucun match ne correspond au seuil de confiance sélectionné. Essayez un seuil plus bas.");
-  } else {
-    renderCouponPage();
+    state.couponMessage = "Aucun match ne correspond au seuil de confiance s?lectionn?. Essayez un seuil plus bas.";
+  } else if (state.couponMatches.length < state.couponCount) {
+    state.couponMessage = `Seulement ${state.couponMatches.length} match(s) correspondent au seuil ${state.couponThreshold}.`;
   }
+
+  renderCouponPage();
 }
 
 async function exportCouponImage() {
@@ -1793,6 +2060,12 @@ function renderPredictionDetails(matchId) {
       </div>
     </section>
   `;
+
+  const cacheKey = String(match.I);
+  const cachedPrediction = state.predictionCache[cacheKey];
+  if (!cachedPrediction || (!cachedPrediction.loading && !cachedPrediction.data && !cachedPrediction.error)) {
+    loadPrediction(match);
+  }
 }
 
 function renderPredictionModule(match, predictionState) {
@@ -1809,16 +2082,14 @@ function renderPredictionModule(match, predictionState) {
     return `<div class="market-item"><p>Aucune prédiction disponible.</p></div>`;
   }
 
-  const rawPrediction = predictionState.data?.raw || prediction;
-  const family = rawPrediction.family || "-";
+  const rawPrediction = prediction.raw || predictionState.data?.raw || prediction;
+  const family = prediction.family || rawPrediction.family || "-";
   const resultLabel = getResultLabel(prediction.result?.prediction, match);
   const exactScore = prediction.exact_score?.prediction || "-";
   const totalGoals = prediction.total_goals?.prediction ?? "-";
   const parity = prediction.parity?.prediction || "-";
   const probabilities = prediction.result?.probabilities || {};
   const confidence = getMainConfidence(probabilities, prediction.result?.prediction);
-  const totalGoalsMarkets = prediction.total_goals?.over_under || {};
-  const handicapMarkets = prediction.handicap || {};
   const handicapRecommendation = prediction.handicap?.recommended || null;
   const handicapLabel = handicapRecommendation
     ? `${formatHandicapLabel(handicapRecommendation.line, handicapRecommendation.prediction, match)} (${getMainConfidence(handicapRecommendation.probabilities || {}, handicapRecommendation.prediction)})`
