@@ -1414,3 +1414,160 @@ h1, h2, h3, p {
   color: #ffffff;
   margin-bottom: 16px;
 }
+
+.coupon-config {
+  display: grid;
+  gap: 24px;
+  padding: 24px;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.config-row label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 180px;
+}
+
+.config-row select {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 200px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.config-row select:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+.config-row select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+}
+
+.threshold-selector {
+  display: flex;
+  gap: 12px;
+}
+
+.threshold-btn {
+  padding: 12px 24px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.04em;
+}
+
+.threshold-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(6, 182, 212, 0.3);
+  transform: translateY(-2px);
+}
+
+.threshold-btn.active {
+  background: var(--gradient-1);
+  border-color: rgba(6, 182, 212, 0.3);
+  color: #ffffff;
+  box-shadow: 0 10px 25px rgba(6, 182, 212, 0.3);
+}
+
+.coupon-matches {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.coupon-match-item {
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.coupon-match-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(6, 182, 212, 0.2);
+  transform: translateY(-2px);
+}
+
+.coupon-match-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.coupon-match-number {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--gradient-1);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.coupon-match-teams {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.coupon-prediction {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+}
+
+.prediction-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.prediction-value {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--accent);
+}
+
+.prediction-confidence {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--good);
+  margin-left: auto;
+}
+
+.coupon-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}

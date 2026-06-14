@@ -47,7 +47,10 @@ const state = {
       content:
         "Bonjour, je suis l’assistant Fury X One. Je peux t’aider à comprendre les ligues, les matchs et les marchés."
     }
-  ]
+  ],
+  couponMatches: [],
+  couponCount: 3,
+  couponThreshold: "safe"
 };
 
 function renderLoading(message = "Chargement des ligues et matchs...") {
@@ -968,6 +971,10 @@ function router() {
     renderPredictionDetails(id);
     return;
   }
+  if (route === "coupon") {
+    renderCouponPage();
+    return;
+  }
   renderHome();
 }
 
@@ -998,6 +1005,10 @@ window.setLeagueFilter = setLeagueFilter;
 window.exportMatchPredictionImage = exportMatchPredictionImage;
 window.exportMatchesToCSV = exportMatchesToCSV;
 window.generatePDFReport = generatePDFReport;
+window.updateCouponCount = updateCouponCount;
+window.setCouponThreshold = setCouponThreshold;
+window.generateCoupon = generateCoupon;
+window.exportCouponImage = exportCouponImage;
 
 assistantToggle.addEventListener("click", () => toggleAssistant());
 assistantClose.addEventListener("click", () => toggleAssistant(false));
@@ -1152,6 +1163,9 @@ function renderHome() {
         <div class="stat"><span>Matchs</span><strong>${escapeHtml(filteredMatches.length)}</strong></div>
         <div class="stat"><span>En direct</span><strong>${escapeHtml(matches.filter((match) => match.ICY).length)}</strong></div>
       </div>
+      <div class="actions">
+        <a class="button" href="#/coupon">Générateur de Coupons</a>
+      </div>
     </section>
 
     <section class="toolbar">
@@ -1186,6 +1200,218 @@ function renderHome() {
       </div>
     </section>
   `;
+}
+
+function renderCouponPage() {
+  app.innerHTML = `
+    <section class="hero">
+      <h2>Générateur de Coupons</h2>
+      <p>Génère automatiquement des coupons de prédictions basés sur l'API FIFA.</p>
+    </section>
+
+    <section class="card">
+      <h3>Configuration du Coupon</h3>
+      <div class="coupon-config">
+        <div class="config-row">
+          <label>Nombre de matchs:</label>
+          <select id="coupon-count" onchange="updateCouponCount(this.value)">
+            <option value="1" ${state.couponCount === 1 ? 'selected' : ''}>1 match</option>
+            <option value="2" ${state.couponCount === 2 ? 'selected' : ''}>2 matchs</option>
+            <option value="3" ${state.couponCount === 3 ? 'selected' : ''}>3 matchs</option>
+            <option value="4" ${state.couponCount === 4 ? 'selected' : ''}>4 matchs</option>
+            <option value="5" ${state.couponCount === 5 ? 'selected' : ''}>5 matchs</option>
+            <option value="6" ${state.couponCount === 6 ? 'selected' : ''}>6 matchs</option>
+            <option value="7" ${state.couponCount === 7 ? 'selected' : ''}>7 matchs</option>
+            <option value="8" ${state.couponCount === 8 ? 'selected' : ''}>8 matchs</option>
+            <option value="9" ${state.couponCount === 9 ? 'selected' : ''}>9 matchs</option>
+            <option value="10" ${state.couponCount === 10 ? 'selected' : ''}>10 matchs</option>
+          </select>
+        </div>
+        <div class="config-row">
+          <label>Seuil de confiance:</label>
+          <div class="threshold-selector">
+            <button class="threshold-btn ${state.couponThreshold === 'safe' ? 'active' : ''}" onclick="setCouponThreshold('safe')">SAFE</button>
+            <button class="threshold-btn ${state.couponThreshold === 'super_safe' ? 'active' : ''}" onclick="setCouponThreshold('super_safe')">SUPER SAFE</button>
+            <button class="threshold-btn ${state.couponThreshold === 'aggressive' ? 'active' : ''}" onclick="setCouponThreshold('aggressive')">AGGRESSIVE</button>
+          </div>
+        </div>
+        <div class="config-row">
+          <button class="button" onclick="generateCoupon()">Générer le Coupon</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Coupon Généré</h3>
+      ${state.couponMatches.length > 0 ? `
+        <div class="coupon-matches">
+          ${state.couponMatches.map((item, index) => `
+            <div class="coupon-match-item">
+              <div class="coupon-match-header">
+                <span class="coupon-match-number">#${index + 1}</span>
+                <span class="coupon-match-teams">${escapeHtml(item.match.O1)} vs ${escapeHtml(item.match.O2)}</span>
+              </div>
+              <div class="coupon-prediction">
+                <span class="prediction-label">Prédiction:</span>
+                <span class="prediction-value">${escapeHtml(item.prediction)}</span>
+                <span class="prediction-confidence">Confiance: ${escapeHtml(item.confidence)}</span>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+        <div class="coupon-actions">
+          <button class="button" onclick="exportCouponImage()">Créer l'image du Coupon</button>
+        </div>
+      ` : '<p class="muted">Cliquez sur "Générer le Coupon" pour créer un nouveau coupon.</p>'}
+    </section>
+  `;
+}
+
+function updateCouponCount(value) {
+  state.couponCount = parseInt(value);
+  renderCouponPage();
+}
+
+function setCouponThreshold(threshold) {
+  state.couponThreshold = threshold;
+  renderCouponPage();
+}
+
+async function generateCoupon() {
+  const matches = getAllMatches();
+  const availableMatches = matches.filter(m => isPrematchState(m) || isLiveState(m));
+  
+  if (availableMatches.length < state.couponCount) {
+    alert("Pas assez de matchs disponibles pour générer ce coupon.");
+    return;
+  }
+
+  const thresholdConfig = {
+    safe: { minConfidence: 70, maxMatches: 3 },
+    super_safe: { minConfidence: 85, maxMatches: 2 },
+    aggressive: { minConfidence: 55, maxMatches: 5 }
+  };
+
+  const config = thresholdConfig[state.couponThreshold];
+  const selectedMatches = availableMatches.slice(0, state.couponCount);
+  
+  state.couponMatches = [];
+
+  for (const match of selectedMatches) {
+    try {
+      const response = await fetch("/api/prediction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ match_id: match.I })
+      });
+      const data = await response.json();
+      const prediction = data.prediction;
+      const rawPrediction = data.raw || prediction;
+      
+      const x1x2 = rawPrediction.predictions?.["1x2"] || {};
+      const probabilities = prediction.result?.probabilities || {};
+      const confidence = getMainConfidence(probabilities, prediction.result?.prediction);
+      
+      if (confidence >= config.minConfidence) {
+        state.couponMatches.push({
+          match: match,
+          prediction: getResultLabel(prediction.result?.prediction, match),
+          confidence: confidence,
+          rawPrediction: rawPrediction
+        });
+      }
+    } catch (error) {
+      console.error("Error loading prediction:", error);
+    }
+  }
+
+  if (state.couponMatches.length === 0) {
+    alert("Aucun match ne correspond au seuil de confiance sélectionné. Essayez un seuil plus bas.");
+  } else {
+    renderCouponPage();
+  }
+}
+
+async function exportCouponImage() {
+  if (state.couponMatches.length === 0) {
+    alert("Aucun coupon à exporter.");
+    return;
+  }
+
+  state.exportLoading = true;
+  renderCouponPage();
+
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080;
+    canvas.height = 1200 + (state.couponMatches.length * 200);
+
+    const context = canvas.getContext("2d");
+    const background = context.createLinearGradient(0, 0, 0, canvas.height);
+    background.addColorStop(0, "#07101d");
+    background.addColorStop(0.55, "#0b1324");
+    background.addColorStop(1, "#0b1020");
+    context.fillStyle = background;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const glow = context.createRadialGradient(860, 180, 30, 860, 180, 360);
+    glow.addColorStop(0, "rgba(94, 234, 212, 0.26)");
+    glow.addColorStop(1, "rgba(94, 234, 212, 0)");
+    context.fillStyle = glow;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    context.fillStyle = "rgba(16, 27, 49, 0.94)";
+    context.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    context.lineWidth = 2;
+    roundRect(context, 56, 52, 968, canvas.height - 104, 36, true, true);
+
+    context.fillStyle = "#5eead4";
+    context.font = "700 30px Arial";
+    context.fillText("FURY X ONE - COUPON", 96, 118);
+
+    context.fillStyle = "#f5f7fb";
+    context.font = "900 42px Arial";
+    context.fillText(`Coupon ${state.couponCount} Matchs`, 96, 180);
+
+    context.fillStyle = "#9fb0cc";
+    context.font = "24px Arial";
+    context.fillText(`Seuil: ${state.couponThreshold.toUpperCase()}`, 96, 220);
+
+    let yPos = 280;
+    state.couponMatches.forEach((item, index) => {
+      context.fillStyle = "rgba(94, 234, 212, 0.16)";
+      context.strokeStyle = "rgba(94, 234, 212, 0.32)";
+      roundRect(context, 96, yPos, 888, 180, 20, true, true);
+
+      context.fillStyle = "#ecfeff";
+      context.font = "700 22px Arial";
+      context.fillText(`#${index + 1} - ${item.match.O1} vs ${item.match.O2}`, 132, yPos + 40);
+
+      context.fillStyle = "#ffffff";
+      context.font = "900 36px Arial";
+      context.fillText(item.prediction, 132, yPos + 90);
+
+      context.fillStyle = "#ecfeff";
+      context.font = "700 20px Arial";
+      context.fillText(`Confiance: ${item.confidence}`, 132, yPos + 130);
+
+      yPos += 200;
+    });
+
+    context.fillStyle = "#5eead4";
+    context.font = "700 24px Arial";
+    context.fillText("Coupon généré depuis Fury X One", 96, canvas.height - 60);
+
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `fury-x-one-coupon-${Date.now()}.png`;
+    link.click();
+  } catch (error) {
+    alert(`Impossible de créer l'image : ${error.message}`);
+  } finally {
+    state.exportLoading = false;
+    renderCouponPage();
+  }
 }
 
 function renderLeagueCard(league) {
