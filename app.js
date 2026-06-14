@@ -164,9 +164,9 @@ function normalizeLeagues(rawMatches) {
   return Array.from(groups.values()).sort((left, right) => left.name.localeCompare(right.name, "fr"));
 }
 
-function formatTimestamp(timestamp) {
+function formatTimestamp(timestamp, locale = "fr-FR") {
   if (!timestamp) return "Inconnu";
-  return new Date(timestamp * 1000).toLocaleString("fr-FR", {
+  return new Date(timestamp * 1000).toLocaleString(locale, {
     dateStyle: "short",
     timeStyle: "short"
   });
@@ -234,6 +234,10 @@ function renderHome() {
         <div class="stat"><span>Ligues</span><strong>${filteredLeagues.length}</strong></div>
         <div class="stat"><span>Matchs</span><strong>${filteredMatches.length}</strong></div>
         <div class="stat"><span>En direct</span><strong>${matches.filter((match) => match.ICY).length}</strong></div>
+      </div>
+      <div class="actions">
+        <button class="button" onclick="exportMatchesToCSV(getAllMatches())">Exporter CSV</button>
+        <button class="button" onclick="generatePDFReport(getAllMatches())">Rapport PDF</button>
       </div>
     </section>
 
@@ -953,6 +957,8 @@ window.addEventListener("load", bootstrap);
 window.bootstrap = bootstrap;
 window.setLeagueFilter = setLeagueFilter;
 window.exportMatchPredictionImage = exportMatchPredictionImage;
+window.exportMatchesToCSV = exportMatchesToCSV;
+window.generatePDFReport = generatePDFReport;
 
 assistantToggle.addEventListener("click", () => toggleAssistant());
 assistantClose.addEventListener("click", () => toggleAssistant(false));
@@ -979,6 +985,115 @@ function escapeClassToken(value) {
 
 function encodeRouteSegment(value) {
   return encodeURIComponent(String(value ?? ""));
+}
+
+function exportMatchesToCSV(matches) {
+  const headers = [
+    "ID Match",
+    "Équipe 1",
+    "Équipe 2",
+    "Ligue",
+    "Pays",
+    "Statut",
+    "Score",
+    "Début",
+    "Marchés"
+  ];
+
+  const rows = matches.map(match => [
+    match.I,
+    match.O1,
+    match.O2,
+    match.LE || match.L,
+    match.CN || match.CE,
+    getDisplayStatus(match),
+    getScoreDisplay(match),
+    formatTimestamp(match.S),
+    (match.E || []).length
+  ]);
+
+  const csvContent = [
+    headers.join(","),
+    ...rows.map(row => row.map(cell => `"${String(cell || "").replace(/"/g, '""')}"`).join(","))
+  ].join("\n");
+
+  const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `fury-x-one-matches-${Date.now()}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function generatePDFReport(matches) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1240;
+  canvas.height = 1754;
+  const context = canvas.getContext("2d");
+
+  const background = context.createLinearGradient(0, 0, 0, canvas.height);
+  background.addColorStop(0, "#07101d");
+  background.addColorStop(0.5, "#0b1324");
+  background.addColorStop(1, "#0b1020");
+  context.fillStyle = background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  context.fillStyle = "#5eead4";
+  context.font = "bold 36px Arial";
+  context.fillText("FURY X ONE - RAPPORT", 50, 80);
+
+  context.fillStyle = "#f5f7fb";
+  context.font = "bold 28px Arial";
+  const date = new Date().toLocaleString("fr-FR", {
+    dateStyle: "full",
+    timeStyle: "short"
+  });
+  context.fillText(`Généré le: ${date}`, 50, 130);
+
+  context.fillStyle = "#9fb0cc";
+  context.font = "24px Arial";
+  context.fillText(`Total matchs: ${matches.length}`, 50, 180);
+  context.fillText(`En direct: ${matches.filter(m => m.ICY).length}`, 50, 220);
+  context.fillText(`À venir: ${matches.filter(m => m.GNS).length}`, 50, 260);
+
+  let y = 320;
+  const matchesPerPage = 15;
+  const matchesToShow = matches.slice(0, matchesPerPage);
+
+  context.fillStyle = "#ecfeff";
+  context.font = "bold 20px Arial";
+  context.fillText("MATCHS PRINCIPAUX", 50, y);
+  y += 40;
+
+  matchesToShow.forEach((match, index) => {
+    if (y > 1650) return;
+
+    context.fillStyle = "rgba(255, 255, 255, 0.05)";
+    roundRect(context, 50, y - 10, 1140, 70, 10, true, false);
+
+    context.fillStyle = "#f5f7fb";
+    context.font = "bold 18px Arial";
+    context.fillText(`${match.O1} vs ${match.O2}`, 70, y + 15);
+
+    context.fillStyle = "#9fb0cc";
+    context.font = "16px Arial";
+    context.fillText(`${match.LE || match.L} · ${getDisplayStatus(match)}`, 70, y + 40);
+
+    context.fillStyle = "#5eead4";
+    context.font = "bold 16px Arial";
+    context.fillText(getScoreDisplay(match), 1100, y + 25);
+
+    y += 90;
+  });
+
+  context.fillStyle = "#5eead4";
+  context.font = "16px Arial";
+  context.fillText("Rapport généré automatiquement par Fury X One", 50, 1720);
+
+  const link = document.createElement("a");
+  link.href = canvas.toDataURL("image/png");
+  link.download = `fury-x-one-report-${Date.now()}.png`;
+  link.click();
 }
 
 

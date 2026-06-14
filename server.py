@@ -34,6 +34,15 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/api/matches":
             self.proxy_matches()
             return
+        if self.path == "/api/public/matches":
+            self.public_api_matches()
+            return
+        if self.path == "/api/public/leagues":
+            self.public_api_leagues()
+            return
+        if self.path == "/api/public/stats":
+            self.public_api_stats()
+            return
 
         relative_path = "index.html" if self.path in ("/", "") else self.path.lstrip("/")
         file_path = (BASE_DIR / relative_path).resolve()
@@ -239,6 +248,88 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
+
+    def public_api_matches(self):
+        try:
+            payload, status, content_type = self.fetch_matches_with_fallback()
+            data = json.loads(payload.decode("utf-8"))
+            matches = data.get("Value", [])
+
+            simplified_matches = []
+            for match in matches[:50]:
+                simplified_matches.append({
+                    "id": match.get("I"),
+                    "team1": match.get("O1"),
+                    "team2": match.get("O2"),
+                    "league": match.get("LE") or match.get("L"),
+                    "status": match.get("TN"),
+                    "is_live": bool(match.get("ICY")),
+                    "score": match.get("SC", {}).get("FS", {}),
+                    "start_time": match.get("S")
+                })
+
+            response = {
+                "success": True,
+                "count": len(simplified_matches),
+                "matches": simplified_matches,
+                "timestamp": int(time.time())
+            }
+            self.send_json(response)
+        except Exception as error:
+            self.send_json({"success": False, "error": str(error)}, 500)
+
+    def public_api_leagues(self):
+        try:
+            payload, status, content_type = self.fetch_matches_with_fallback()
+            data = json.loads(payload.decode("utf-8"))
+            matches = data.get("Value", [])
+
+            leagues = {}
+            for match in matches:
+                league_id = match.get("LI") or match.get("LE") or "unknown"
+                league_name = match.get("LE") or match.get("L") or "Unknown"
+                if league_id not in leagues:
+                    leagues[league_id] = {
+                        "id": league_id,
+                        "name": league_name,
+                        "country": match.get("CN") or match.get("CE") or "Unknown",
+                        "match_count": 0
+                    }
+                leagues[league_id]["match_count"] += 1
+
+            response = {
+                "success": True,
+                "count": len(leagues),
+                "leagues": list(leagues.values()),
+                "timestamp": int(time.time())
+            }
+            self.send_json(response)
+        except Exception as error:
+            self.send_json({"success": False, "error": str(error)}, 500)
+
+    def public_api_stats(self):
+        try:
+            payload, status, content_type = self.fetch_matches_with_fallback()
+            data = json.loads(payload.decode("utf-8"))
+            matches = data.get("Value", [])
+
+            live_count = sum(1 for m in matches if m.get("ICY"))
+            upcoming_count = sum(1 for m in matches if m.get("GNS"))
+            total_count = len(matches)
+
+            response = {
+                "success": True,
+                "stats": {
+                    "total_matches": total_count,
+                    "live_matches": live_count,
+                    "upcoming_matches": upcoming_count,
+                    "finished_matches": total_count - live_count - upcoming_count
+                },
+                "timestamp": int(time.time())
+            }
+            self.send_json(response)
+        except Exception as error:
+            self.send_json({"success": False, "error": str(error)}, 500)
 
 
 def run():
