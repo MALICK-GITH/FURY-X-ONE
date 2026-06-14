@@ -43,6 +43,16 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/api/public/stats":
             self.public_api_stats()
             return
+        if self.path == "/api/fifa/health":
+            self.fifa_health_check()
+            return
+        if self.path == "/api/fifa/families":
+            self.fifa_families()
+            return
+        if self.path.startswith("/api/fifa/leagues/"):
+            family = self.path.split("/")[-1]
+            self.fifa_leagues(family)
+            return
 
         relative_path = "index.html" if self.path in ("/", "") else self.path.lstrip("/")
         file_path = (BASE_DIR / relative_path).resolve()
@@ -330,6 +340,33 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
             self.send_json(response)
         except Exception as error:
             self.send_json({"success": False, "error": str(error)}, 500)
+
+    def fifa_health_check(self):
+        try:
+            request = Request(f"{PREDICTION_API_URL}/health")
+            with open_url_with_retry(request, timeout=10) as response:
+                payload = response.read()
+                self.send_json(json.loads(payload.decode("utf-8")))
+        except Exception as error:
+            self.send_json({"status": "unhealthy", "error": str(error)}, 503)
+
+    def fifa_families(self):
+        try:
+            request = Request(f"{PREDICTION_API_URL}/families")
+            with open_url_with_retry(request, timeout=10) as response:
+                payload = response.read()
+                self.send_json(json.loads(payload.decode("utf-8")))
+        except Exception as error:
+            self.send_json({"error": str(error)}, 500)
+
+    def fifa_leagues(self, family):
+        try:
+            request = Request(f"{PREDICTION_API_URL}/leagues/{family}")
+            with open_url_with_retry(request, timeout=10) as response:
+                payload = response.read()
+                self.send_json(json.loads(payload.decode("utf-8")))
+        except Exception as error:
+            self.send_json({"error": str(error)}, 500)
 
 
 def run():
