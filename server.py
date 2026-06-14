@@ -15,7 +15,7 @@ PORT = 3000
 BASE_DIR = Path(__file__).resolve().parent
 API_URL = (
     "https://888starz.bet/service-api/LiveFeed/Get1x2_VZip"
-    "?sports=85&count=80&lng=fr&gr=789&mode=4&country=96"
+    "?sports=85&count=40&lng=fr&gr=789&mode=4&country=96"
     "&partner=233&getEmpty=true&virtualSports=true&noFilterBlockEvent=true"
 )
 API_URL_1XBET = (
