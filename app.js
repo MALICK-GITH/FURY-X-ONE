@@ -671,9 +671,10 @@ async function exportMatchPredictionImage(matchId) {
 
     const predictionState = state.predictionCache[String(match.I)] || {};
     const prediction = predictionState.data?.prediction || null;
+    const rawPrediction = predictionState.data?.raw || prediction;
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
-    canvas.height = 1440;
+    canvas.height = 1600;
 
     const context = canvas.getContext("2d");
     const background = context.createLinearGradient(0, 0, 0, canvas.height);
@@ -741,39 +742,77 @@ async function exportMatchPredictionImage(matchId) {
     wrapExportLine(context, getPredictionFooter(predictionState, match), 132, 716, 810, 36);
 
     context.fillStyle = "rgba(255, 255, 255, 0.04)";
-    roundRect(context, 96, 810, 888, 348, 28, true, false);
+    roundRect(context, 96, 810, 888, 400, 28, true, false);
 
     context.fillStyle = "#f5f7fb";
     context.font = "700 28px Arial";
-    context.fillText("RÉSUMÉ DU MATCH", 132, 868);
+    context.fillText("PRÉDICTIONS COMPLÈTES", 132, 868);
 
-    context.fillStyle = "#9fb0cc";
-    context.font = "26px Arial";
-    const summaryText = [
-      `Début : ${formatTimestamp(match.S)}`,
-      `Marchés : ${match.EC || (match.E || []).length}`,
-      `Info : ${match.SC?.I || "Aucune information supplémentaire"}`,
-      prediction
-        ? `Score exact : ${prediction.exact_score?.prediction || "-"} | Total ${formatPredictionNumber(prediction.total_goals?.prediction)}`
-        : "Prédiction : indisponible"
-    ].join(" · ");
-    wrapExportLine(context, summaryText, 132, 918, 810, 34);
+    const x1x2 = rawPrediction.predictions?.["1x2"] || {};
+    const totalGoalsData = rawPrediction.predictions?.total_goals || {};
+    const handicapData = rawPrediction.predictions?.handicap || {};
+    const parityData = rawPrediction.predictions?.parity || {};
+    const exactScoreData = rawPrediction.predictions?.exact_score || {};
+    const family = rawPrediction.family || "-";
+
+    let yPos = 920;
+
+    context.fillStyle = "#5eead4";
+    context.font = "700 22px Arial";
+    context.fillText(`Famille: ${family}`, 132, yPos);
+    yPos += 40;
+
+    context.fillStyle = "#ecfeff";
+    context.font = "700 22px Arial";
+    context.fillText("Score Exact:", 132, yPos);
+    context.fillStyle = "#ffffff";
+    context.font = "900 36px Arial";
+    context.fillText(exactScoreData.prediction || "-", 280, yPos);
+    yPos += 50;
+
+    context.fillStyle = "#ecfeff";
+    context.font = "700 22px Arial";
+    context.fillText("Total Buts:", 132, yPos);
+    context.fillStyle = "#ffffff";
+    context.font = "900 36px Arial";
+    context.fillText(formatPredictionNumber(totalGoalsData.predicted || "-"), 280, yPos);
+    yPos += 50;
+
+    context.fillStyle = "#ecfeff";
+    context.font = "700 22px Arial";
+    context.fillText("1X2:", 132, yPos);
+    context.fillStyle = "#ffffff";
+    context.font = "700 20px Arial";
+    context.fillText(`H: ${formatPercent(x1x2.home)} | D: ${formatPercent(x1x2.draw)} | A: ${formatPercent(x1x2.away)}`, 200, yPos);
+    yPos += 50;
+
+    context.fillStyle = "#ecfeff";
+    context.font = "700 22px Arial";
+    context.fillText("Parité:", 132, yPos);
+    context.fillStyle = "#ffffff";
+    context.font = "700 20px Arial";
+    context.fillText(`Pair: ${formatPercent(parityData.pair)} | Impair: ${formatPercent(parityData.impair)}`, 220, yPos);
+    yPos += 50;
+
+    context.fillStyle = "rgba(255, 255, 255, 0.04)";
+    roundRect(context, 96, 1230, 888, 200, 28, true, false);
 
     context.fillStyle = "#f5f7fb";
     context.font = "700 28px Arial";
-    context.fillText("MARCHÉS CLÉS", 132, 1036);
+    context.fillText("RÉSUMÉ DU MATCH", 132, 1288);
 
     context.fillStyle = "#9fb0cc";
     context.font = "24px Arial";
-    (match.E || []).slice(0, 4).forEach((item, index) => {
-      const label = betTypeLabels[item.T] || `Type ${item.T}`;
-      const line = item.P !== undefined ? ` ${item.P}` : "";
-      context.fillText(`- ${label}${line} · ${item.C}`, 132, 1088 + index * 44);
-    });
+    const summaryText = [
+      `Début : ${formatTimestamp(match.S)}`,
+      `Marchés : ${match.EC || (match.E || []).length}`,
+      `Info : ${match.SC?.I || "Aucune information supplémentaire"}`
+    ].join(" · ");
+    wrapExportLine(context, summaryText, 132, 1338, 810, 34);
 
     context.fillStyle = "#5eead4";
     context.font = "700 24px Arial";
-    context.fillText("Image générée depuis la page détails Fury X One", 132, 1296);
+    context.fillText("Image générée depuis la page détails Fury X One", 132, 1380);
 
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/png");
