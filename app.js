@@ -1544,42 +1544,106 @@ function renderPredictionModule(match, predictionState) {
     return `<div class="market-item"><p>Aucune prédiction disponible.</p></div>`;
   }
 
+  const rawPrediction = predictionState.data?.raw || prediction;
+  const family = rawPrediction.family || "-";
   const resultLabel = getResultLabel(prediction.result?.prediction, match);
   const exactScore = prediction.exact_score?.prediction || "-";
   const totalGoals = prediction.total_goals?.prediction ?? "-";
   const parity = prediction.parity?.prediction || "-";
-  const family = prediction.family || "-";
   const probabilities = prediction.result?.probabilities || {};
   const confidence = getMainConfidence(probabilities, prediction.result?.prediction);
   const totalGoalsMarkets = prediction.total_goals?.over_under || {};
+  const handicapMarkets = prediction.handicap || {};
   const handicapRecommendation = prediction.handicap?.recommended || null;
   const handicapLabel = handicapRecommendation
     ? `${formatHandicapLabel(handicapRecommendation.line, handicapRecommendation.prediction, match)} (${getMainConfidence(handicapRecommendation.probabilities || {}, handicapRecommendation.prediction)})`
     : "-";
 
+  const x1x2 = rawPrediction.predictions?.["1x2"] || {};
+  const totalGoalsData = rawPrediction.predictions?.total_goals || {};
+  const handicapData = rawPrediction.predictions?.handicap || {};
+  const parityData = rawPrediction.predictions?.parity || {};
+  const exactScoreData = rawPrediction.predictions?.exact_score || {};
+
   return `
-    <div class="primary-prediction-glow">
-      <span class="primary-prediction-label">Prédiction principale</span>
-      <div class="primary-prediction-value">${escapeHtml(resultLabel)}</div>
-      <div class="primary-prediction-meta">
-        <span>Score exact: ${escapeHtml(exactScore)}</span>
-        <span>Total buts: ${escapeHtml(formatPredictionNumber(totalGoals))}</span>
-        <span>Confiance: ${escapeHtml(confidence)}</span>
-        <span>Famille: ${escapeHtml(family)}</span>
+    <div class="prediction-full-display">
+      <div class="prediction-family-badge">Famille: ${escapeHtml(family)}</div>
+      
+      <div class="prediction-exact-score">
+        <div class="prediction-exact-score-label">Score Exact Prédit</div>
+        <div class="prediction-exact-score-value">${escapeHtml(exactScoreData.prediction || exactScore)}</div>
       </div>
-    </div>
-    <div class="prediction-grid">
-      <div class="market-item"><strong>Résultat</strong><p>${escapeHtml(resultLabel)}</p></div>
-      <div class="market-item"><strong>Score exact</strong><p>${escapeHtml(exactScore)}</p></div>
-      <div class="market-item"><strong>Total buts</strong><p>${escapeHtml(formatPredictionNumber(totalGoals))}</p></div>
-      <div class="market-item"><strong>Parité</strong><p>${escapeHtml(parity)}</p></div>
-      <div class="market-item"><strong>Probabilité domicile</strong><p>${escapeHtml(formatPercent(probabilities.H))}</p></div>
-      <div class="market-item"><strong>Probabilité nul</strong><p>${escapeHtml(formatPercent(probabilities.D))}</p></div>
-      <div class="market-item"><strong>Probabilité extérieur</strong><p>${escapeHtml(formatPercent(probabilities.A))}</p></div>
-      <div class="market-item"><strong>Plus de 2,5 buts</strong><p>${escapeHtml(formatOverUnder(totalGoalsMarkets["2.5"], "over"))}</p></div>
-      <div class="market-item"><strong>Plus de 3,5 buts</strong><p>${escapeHtml(formatOverUnder(totalGoalsMarkets["3.5"], "over"))}</p></div>
-      <div class="market-item"><strong>Handicap conseillé</strong><p>${escapeHtml(handicapLabel)}</p></div>
-      <div class="market-item"><strong>Source</strong><p>${escapeHtml(predictionState.data?.provider || "API réelle")}</p></div>
+
+      <div class="prediction-total-goals">
+        <div class="prediction-total-goals-label">Total Buts Prédit</div>
+        <div class="prediction-total-goals-value">${escapeHtml(formatPredictionNumber(totalGoalsData.predicted || totalGoals))}</div>
+      </div>
+
+      <div class="prediction-section">
+        <div class="prediction-section-title">Résultat 1X2</div>
+        <div class="prediction-1x2-grid">
+          <div class="prediction-1x2-item ${x1x2.home > x1x2.away && x1x2.home > x1x2.draw ? 'winner' : ''}">
+            <div class="prediction-1x2-label">Domicile</div>
+            <div class="prediction-1x2-value">H</div>
+            <div class="prediction-1x2-percent">${escapeHtml(formatPercent(x1x2.home))}</div>
+          </div>
+          <div class="prediction-1x2-item ${x1x2.draw > x1x2.home && x1x2.draw > x1x2.away ? 'winner' : ''}">
+            <div class="prediction-1x2-label">Nul</div>
+            <div class="prediction-1x2-value">D</div>
+            <div class="prediction-1x2-percent">${escapeHtml(formatPercent(x1x2.draw))}</div>
+          </div>
+          <div class="prediction-1x2-item ${x1x2.away > x1x2.home && x1x2.away > x1x2.draw ? 'winner' : ''}">
+            <div class="prediction-1x2-label">Extérieur</div>
+            <div class="prediction-1x2-value">A</div>
+            <div class="prediction-1x2-percent">${escapeHtml(formatPercent(x1x2.away))}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="prediction-section">
+        <div class="prediction-section-title">Over/Under Dynamique</div>
+        <div class="prediction-overunder-grid">
+          ${Object.entries(totalGoalsData.over_under || {}).slice(0, 6).map(([threshold, probs]) => `
+            <div class="prediction-overunder-item">
+              <div class="prediction-overunder-threshold">${escapeHtml(threshold)}</div>
+              <div class="prediction-overunder-probs">
+                <div class="prediction-overunder-prob over">Over: ${escapeHtml(formatPercent(probs.over))}</div>
+                <div class="prediction-overunder-prob under">Under: ${escapeHtml(formatPercent(probs.under))}</div>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="prediction-section">
+        <div class="prediction-section-title">Handicap Dynamique</div>
+        <div class="prediction-handicap-grid">
+          ${Object.entries(handicapData).filter(([key]) => key !== 'recommended').slice(0, 5).map(([line, probs]) => `
+            <div class="prediction-handicap-item">
+              <div class="prediction-handicap-line">${escapeHtml(line)}</div>
+              <div class="prediction-handicap-probs">
+                <div class="prediction-handicap-prob">H: ${escapeHtml(formatPercent(probs.home))}</div>
+                <div class="prediction-handicap-prob">D: ${escapeHtml(formatPercent(probs.draw))}</div>
+                <div class="prediction-handicap-prob">A: ${escapeHtml(formatPercent(probs.away))}</div>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="prediction-section">
+        <div class="prediction-section-title">Parité</div>
+        <div class="prediction-parity-grid">
+          <div class="prediction-parity-item">
+            <div class="prediction-parity-label">Pair</div>
+            <div class="prediction-parity-value">${escapeHtml(formatPercent(parityData.pair))}</div>
+          </div>
+          <div class="prediction-parity-item">
+            <div class="prediction-parity-label">Impair</div>
+            <div class="prediction-parity-value">${escapeHtml(formatPercent(parityData.impair))}</div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 }
