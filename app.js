@@ -27,6 +27,7 @@ const marketGroupLabels = {
 
 const app = document.getElementById("app");
 const assistantToggle = document.getElementById("assistant-toggle");
+const bottomNavAssistant = document.getElementById("bottom-nav-assistant");
 const assistantPanel = document.getElementById("assistant-panel");
 const assistantClose = document.getElementById("assistant-close");
 const assistantMessagesEl = document.getElementById("assistant-messages");
@@ -57,6 +58,7 @@ const state = {
   couponMessage: "",
   couponCount: 3,
   couponThreshold: "safe",
+  couponMarket: "auto",
   couponLeagueSelection: ["all"],
   couponLeaguePanelOpen: false,
   couponGenerating: false
@@ -124,6 +126,10 @@ function getPredictionFamilyForLeagueName(leagueName) {
     }
   }
   return "CLASSIC";
+}
+
+function getPredictionFamilyConfig(familyName) {
+  return state.predictionApi.families?.[familyName] || {};
 }
 
 function getFilteredLeagues() {
@@ -197,12 +203,59 @@ function normalizeLeagues(rawMatches) {
   return Array.from(groups.values()).sort((left, right) => left.name.localeCompare(right.name, "fr"));
 }
 
+function hydratePredictionApiLeagueMetadata() {
+  const familyEntries = Object.entries(state.predictionApi.families || {});
+  const leaguesByFamily = state.predictionApi.leaguesByFamily || {};
+
+  state.leagues = state.leagues.map((league) => {
+    let resolvedFamily = getPredictionFamilyForLeagueName(league.name);
+    let supportedByPredictionApi = false;
+
+    for (const [familyName] of familyEntries) {
+      const knownLeagues = leaguesByFamily[familyName] || [];
+      if (knownLeagues.some((item) => String(item).toLowerCase() === String(league.name).toLowerCase())) {
+        resolvedFamily = familyName;
+        supportedByPredictionApi = true;
+        break;
+      }
+    }
+
+    return {
+      ...league,
+      predictionFamily: resolvedFamily,
+      supportedByPredictionApi
+    };
+  });
+}
+
 function formatTimestamp(timestamp, locale = "fr-FR") {
   if (!timestamp) return "Inconnu";
   return new Date(timestamp * 1000).toLocaleString(locale, {
     dateStyle: "short",
     timeStyle: "short"
   });
+}
+
+function getMinutesUntilStart(match) {
+  const startTimestamp = Number(match?.S || 0);
+  if (!startTimestamp) return null;
+  return Math.round((startTimestamp * 1000 - Date.now()) / 60000);
+}
+
+function getCountdownLabel(match) {
+  const minutesUntilStart = getMinutesUntilStart(match);
+  if (minutesUntilStart === null) {
+    return match.SC?.SLS || "Début inconnu";
+  }
+  if (minutesUntilStart <= 0) {
+    return isLiveState(match) ? "En cours" : "Démarrage imminent";
+  }
+  if (minutesUntilStart < 60) {
+    return `Début dans ${minutesUntilStart} min`;
+  }
+  const hours = Math.floor(minutesUntilStart / 60);
+  const minutes = minutesUntilStart % 60;
+  return `Début dans ${hours}h${minutes ? ` ${minutes}min` : ""}`;
 }
 
 function hasLiveScore(match) {
@@ -242,7 +295,7 @@ function getDisplayPhase(match) {
 }
 
 function getDisplayTime(match) {
-  return match.SC?.SLS || "Temps inconnu";
+  return getCountdownLabel(match);
 }
 
 function getCompactMatchInfo(match) {
@@ -680,6 +733,14 @@ function getMainConfidence(probabilities, code) {
   return formatPercent(probabilities[code]);
 }
 
+function getConfidenceValue(probabilities, code) {
+  if (!code || !probabilities || probabilities[code] === undefined || probabilities[code] === null) {
+    return null;
+  }
+  const value = Number(probabilities[code]);
+  return Number.isNaN(value) ? null : value;
+}
+
 function formatOverUnder(overUnderLine, side) {
   if (!overUnderLine || overUnderLine[side] === undefined) {
     return "-";
@@ -696,6 +757,135 @@ function formatHandicapLabel(line, code, match) {
     return `Handicap ${line} : nul`;
   }
   return `${teamLabel} ${line}`;
+}
+
+function formatOverUnderLabel(line, side) {
+  if (!line || !side) {
+    return "-";
+  }
+  return `${side === "over" ? "Plus de" : "Moins de"} ${line} buts`;
+}
+
+function getCouponMarketLabel(market) {
+  if (market === "result") return "Résultat 1X2";
+  if (market === "goals") return "Over / Under";
+  if (market === "handicap") return "Handicap";
+  if (market === "parity") return "Parité";
+  return "Auto";
+}
+
+function getCouponThresholdConfig() {
+  return {
+    safe: { minConfidence: 0.65, scanCount: 24 },
+    super_safe: { minConfidence: 0.78, scanCount: 28 },
+    aggressive: { minConfidence: 0.52, scanCount: 32 }
+  };
+}
+
+function getBestOverUnderRecommendation(prediction, familyConfig) {
+  const overUnder = prediction?.total_goals?.over_under || prediction?.raw?.predictions?.total_goals?.over_under || {};
+  const targetGoals = Number(familyConfig?.typical_goals);
+  let bestEntry = null;
+
+  for (const [line, values] of Object.entries(overUnder)) {
+    const overValue = Number(values?.over);
+    const underValue = Number(values?.under);
+    const side = overValue >= underValue ? "over" : "under";
+    const probability = side === "over" ? overValue : underValue;
+
+    if (Number.isNaN(probability)) {
+      continue;
+    }
+
+    const distance = Number.isNaN(targetGoals) ? 0 : Math.abs(Number(line) - targetGoals);
+    if (
+      !bestEntry ||
+      probability > bestEntry.probability ||
+      (probability === bestEntry.probability && distance < bestEntry.distance)
+    ) {
+      bestEntry = {
+        line,
+        side,
+        probability,
+        distance,
+        label: formatOverUnderLabel(line, side)
+      };
+    }
+  }
+
+  return bestEntry;
+}
+
+function getCouponPredictionCandidate(prediction, match, marketMode) {
+  if (!prediction) {
+    return null;
+  }
+
+  const family = prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L);
+  const familyConfig = getPredictionFamilyConfig(family);
+  const resultCode = prediction.result?.prediction;
+  const resultConfidence = getConfidenceValue(prediction.result?.probabilities || {}, resultCode);
+  const parityCode = prediction.parity?.prediction;
+  const parityConfidence = getConfidenceValue(
+    { pair: prediction.parity?.prob_pair, impair: prediction.parity?.prob_impair },
+    parityCode
+  );
+  const handicapRecommendation = prediction.handicap?.recommended || null;
+  const handicapConfidence = getConfidenceValue(
+    handicapRecommendation?.probabilities || {},
+    handicapRecommendation?.prediction
+  );
+  const goalsRecommendation = getBestOverUnderRecommendation(prediction, familyConfig);
+
+  const candidates = [];
+  if (resultCode && resultConfidence !== null) {
+    candidates.push({
+      market: "result",
+      label: getResultLabel(resultCode, match),
+      confidenceValue: resultConfidence,
+      confidence: formatPercent(resultConfidence),
+      detail: familyConfig?.has_draw === false ? "Famille sans nul" : "Marché 1X2"
+    });
+  }
+
+  if (goalsRecommendation) {
+    candidates.push({
+      market: "goals",
+      label: goalsRecommendation.label,
+      confidenceValue: goalsRecommendation.probability,
+      confidence: formatPercent(goalsRecommendation.probability),
+      detail: Number.isNaN(Number(familyConfig?.typical_goals))
+        ? "Total buts dynamique"
+        : `Total typique ${formatPredictionNumber(familyConfig?.typical_goals)}`
+    });
+  }
+
+  if (handicapRecommendation && handicapConfidence !== null) {
+    candidates.push({
+      market: "handicap",
+      label: formatHandicapLabel(handicapRecommendation.line, handicapRecommendation.prediction, match),
+      confidenceValue: handicapConfidence,
+      confidence: formatPercent(handicapConfidence),
+      detail: `Ligne ${handicapRecommendation.line}`
+    });
+  }
+
+  if (parityCode && parityConfidence !== null) {
+    candidates.push({
+      market: "parity",
+      label: parityCode === "pair" ? "Total pair" : "Total impair",
+      confidenceValue: parityConfidence,
+      confidence: formatPercent(parityConfidence),
+      detail: "Marché parité"
+    });
+  }
+
+  if (marketMode !== "auto") {
+    return candidates.find((item) => item.market === marketMode) || null;
+  }
+
+  candidates.sort((left, right) => right.confidenceValue - left.confidenceValue);
+  return candidates[0] || null;
 }
 
 function getPredictionHeadline(prediction, match) {
@@ -795,9 +985,19 @@ async function exportMatchPredictionImage(matchId) {
     const predictionState = state.predictionCache[String(match.I)] || {};
     const prediction = predictionState.data?.prediction || null;
     const rawPrediction = predictionState.data?.raw || prediction;
+    const family = rawPrediction?.family || prediction?.family || "-";
+    const featuredMarkets = getFeaturedMarkets(match);
+    const contextLines = [
+      `Ligue: ${match.LE || match.L || "Ligue inconnue"}`,
+      `Début: ${formatTimestamp(match.S)}`,
+      `Statut: ${getDisplayStatus(match)} · ${getDisplayPhase(match)} · ${getDisplayTime(match)}`,
+      `Livefeed: ${getLivefeedNarrative(match)}`,
+      `Compétition: ${describeCompetitionScope(match)}`,
+      `Virtuel: ${describeVirtualInstance(match)}`
+    ];
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
-    canvas.height = 1600;
+    canvas.height = 1860;
 
     const context = canvas.getContext("2d");
     const background = context.createLinearGradient(0, 0, 0, canvas.height);
@@ -816,7 +1016,7 @@ async function exportMatchPredictionImage(matchId) {
     context.fillStyle = "rgba(16, 27, 49, 0.94)";
     context.strokeStyle = "rgba(255, 255, 255, 0.08)";
     context.lineWidth = 2;
-    roundRect(context, 56, 52, 968, 1336, 36, true, true);
+    roundRect(context, 56, 52, 968, 1596, 36, true, true);
 
     context.fillStyle = "#5eead4";
     context.font = "700 30px Arial";
@@ -830,55 +1030,64 @@ async function exportMatchPredictionImage(matchId) {
     context.font = "28px Arial";
     context.fillText(match.LE || match.L || "Ligue inconnue", 96, 244);
 
+    context.fillStyle = "rgba(255, 255, 255, 0.04)";
+    roundRect(context, 96, 268, 888, 160, 24, true, false);
+    context.fillStyle = "#cbd5e1";
+    context.font = "21px Arial";
+    let contextY = 312;
+    contextLines.forEach((line) => {
+      wrapExportLine(context, line, 128, contextY, 810, 28);
+      contextY += 28;
+    });
+
     context.fillStyle = "rgba(255, 255, 255, 0.05)";
-    roundRect(context, 96, 292, 888, 176, 28, true, false);
+    roundRect(context, 96, 452, 888, 176, 28, true, false);
 
     context.fillStyle = "#f5f7fb";
     context.font = "700 28px Arial";
-    context.fillText(match.O1, 134, 356);
+    context.fillText(match.O1, 134, 516);
     context.textAlign = "center";
     context.font = "900 58px Arial";
-    context.fillText(getScoreDisplay(match), 540, 376);
+    context.fillText(getScoreDisplay(match), 540, 536);
     context.textAlign = "right";
     context.font = "700 28px Arial";
-    context.fillText(match.O2, 946, 356);
+    context.fillText(match.O2, 946, 516);
     context.textAlign = "left";
 
     context.fillStyle = "#9fb0cc";
     context.font = "24px Arial";
-    context.fillText(`${getDisplayStatus(match)} · ${getDisplayPhase(match)} · ${getDisplayTime(match)}`, 134, 420);
+    context.fillText(`${getDisplayStatus(match)} · ${getDisplayPhase(match)} · ${getDisplayTime(match)}`, 134, 580);
 
     context.fillStyle = "rgba(94, 234, 212, 0.16)";
     context.strokeStyle = "rgba(94, 234, 212, 0.32)";
-    roundRect(context, 96, 520, 888, 244, 30, true, true);
+    roundRect(context, 96, 680, 888, 244, 30, true, true);
 
     context.fillStyle = "#ecfeff";
     context.font = "700 24px Arial";
-    context.fillText("PRÉDICTION PRINCIPALE", 132, 576);
+    context.fillText("PRÉDICTION PRINCIPALE", 132, 736);
 
     context.fillStyle = "#ffffff";
     context.font = "900 72px Arial";
-    context.fillText(getPredictionHeadline(prediction, match), 132, 664);
+    wrapExportLine(context, getPredictionHeadline(prediction, match), 132, 824, 760, 68);
 
     context.fillStyle = "#ecfeff";
     context.font = "28px Arial";
-    wrapExportLine(context, getPredictionFooter(predictionState, match), 132, 716, 810, 36);
+    wrapExportLine(context, getPredictionFooter(predictionState, match), 132, 864, 810, 36);
 
     context.fillStyle = "rgba(255, 255, 255, 0.04)";
-    roundRect(context, 96, 810, 888, 400, 28, true, false);
+    roundRect(context, 96, 970, 888, 420, 28, true, false);
 
     context.fillStyle = "#f5f7fb";
     context.font = "700 28px Arial";
-    context.fillText("PRÉDICTIONS COMPLÈTES", 132, 868);
+    context.fillText("PRÉDICTIONS COMPLÈTES", 132, 1028);
 
     const x1x2 = rawPrediction.predictions?.["1x2"] || {};
     const totalGoalsData = rawPrediction.predictions?.total_goals || {};
     const handicapData = rawPrediction.predictions?.handicap || {};
     const parityData = rawPrediction.predictions?.parity || {};
     const exactScoreData = rawPrediction.predictions?.exact_score || {};
-    const family = rawPrediction.family || "-";
 
-    let yPos = 920;
+    let yPos = 1080;
 
     context.fillStyle = "#5eead4";
     context.font = "700 22px Arial";
@@ -918,24 +1127,37 @@ async function exportMatchPredictionImage(matchId) {
     yPos += 50;
 
     context.fillStyle = "rgba(255, 255, 255, 0.04)";
-    roundRect(context, 96, 1230, 888, 200, 28, true, false);
+    roundRect(context, 96, 1430, 888, 220, 28, true, false);
 
     context.fillStyle = "#f5f7fb";
     context.font = "700 28px Arial";
-    context.fillText("RÉSUMÉ DU MATCH", 132, 1288);
+    context.fillText("RÉSUMÉ DU MATCH", 132, 1488);
 
     context.fillStyle = "#9fb0cc";
     context.font = "24px Arial";
     const summaryText = [
       `Début : ${formatTimestamp(match.S)}`,
       `Marchés : ${match.EC || (match.E || []).length}`,
-      `Info : ${match.SC?.I || "Aucune information supplémentaire"}`
+      `Info : ${match.SC?.I || "Aucune information supplémentaire"}`,
+      `HMH : ${match.HMH ?? "-"}`,
+      `AE vedette : ${featuredMarkets[0] ? `${featuredMarkets[0].group} · ${featuredMarkets[0].label} · ${featuredMarkets[0].odd}` : "Aucun"}`
     ].join(" · ");
-    wrapExportLine(context, summaryText, 132, 1338, 810, 34);
+    wrapExportLine(context, summaryText, 132, 1538, 810, 34);
+
+    if (featuredMarkets.length > 1) {
+      context.fillStyle = "#5eead4";
+      context.font = "700 24px Arial";
+      context.fillText("MARCHÉS VEDETTES LIVEFEED", 132, 1688);
+      context.fillStyle = "#ecfeff";
+      context.font = "20px Arial";
+      featuredMarkets.slice(0, 3).forEach((item, index) => {
+        wrapExportLine(context, `• ${item.group} · ${item.label} · ${item.odd}`, 132, 1728 + (index * 30), 800, 28);
+      });
+    }
 
     context.fillStyle = "#5eead4";
     context.font = "700 24px Arial";
-    context.fillText("Image générée depuis la page détails Fury X One", 132, 1380);
+    context.fillText("Image générée depuis la page détails Fury X One", 132, 1800);
 
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/png");
@@ -1201,6 +1423,8 @@ function router() {
 
   const hash = window.location.hash || "#/";
   const [, route, id] = hash.split("/");
+  const shouldResetScroll = route === "prediction";
+  updateBottomNav(route || "home");
 
   if (!route) {
     renderHome();
@@ -1212,6 +1436,9 @@ function router() {
   }
   if (route === "prediction") {
     renderPredictionDetails(id);
+    if (shouldResetScroll) {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
     return;
   }
   if (route === "coupon") {
@@ -1219,6 +1446,21 @@ function router() {
     return;
   }
   renderHome();
+}
+
+function updateBottomNav(routeName) {
+  document.querySelectorAll(".bottom-nav-item[data-nav-route]").forEach((item) => {
+    const itemRoute = item.getAttribute("data-nav-route");
+    const isActive = itemRoute === "home"
+      ? routeName === "home" || routeName === ""
+      : itemRoute === routeName;
+    item.classList.toggle("active", Boolean(isActive));
+    if (isActive) {
+      item.setAttribute("aria-current", "page");
+    } else {
+      item.removeAttribute("aria-current");
+    }
+  });
 }
 
 async function bootstrap() {
@@ -1268,12 +1510,15 @@ window.exportMatchPredictionImage = exportMatchPredictionImage;
 window.exportMatchesToCSV = exportMatchesToCSV;
 window.generatePDFReport = generatePDFReport;
 window.updateCouponCount = updateCouponCount;
+window.updateCouponMarket = updateCouponMarket;
 window.setCouponThreshold = setCouponThreshold;
 window.toggleCouponLeagueSelection = toggleCouponLeagueSelection;
+window.toggleCouponLeaguePanel = toggleCouponLeaguePanel;
 window.generateCoupon = generateCoupon;
 window.exportCouponImage = exportCouponImage;
 
 assistantToggle.addEventListener("click", () => toggleAssistant());
+bottomNavAssistant?.addEventListener("click", () => toggleAssistant());
 assistantClose.addEventListener("click", () => toggleAssistant(false));
 assistantForm.addEventListener("submit", handleAssistantSubmit);
 renderAssistantMessages();
@@ -1466,6 +1711,8 @@ function renderHome() {
 }
 
 function renderCouponPage() {
+  const eligibleLeagues = getCouponEligibleLeagues();
+  const directSupportCount = eligibleLeagues.filter((league) => league.supportedByPredictionApi).length;
   app.innerHTML = `
     <section class="hero">
       <h2>Générateur de Coupons</h2>
@@ -1499,11 +1746,21 @@ function renderCouponPage() {
           </div>
         </div>
         <div class="config-row">
-          <label>Ligues ? inclure:</label>
+          <label>Marché prédictif:</label>
+          <select id="coupon-market" onchange="updateCouponMarket(this.value)">
+            <option value="auto" ${state.couponMarket === 'auto' ? 'selected' : ''}>Auto meilleur marché</option>
+            <option value="result" ${state.couponMarket === 'result' ? 'selected' : ''}>Résultat 1X2</option>
+            <option value="goals" ${state.couponMarket === 'goals' ? 'selected' : ''}>Over / Under</option>
+            <option value="handicap" ${state.couponMarket === 'handicap' ? 'selected' : ''}>Handicap</option>
+            <option value="parity" ${state.couponMarket === 'parity' ? 'selected' : ''}>Parité</option>
+          </select>
+        </div>
+        <div class="config-row">
+          <label>Ligues à inclure:</label>
           <div class="coupon-league-panel">
             <button class="button button-secondary" type="button" onclick="toggleCouponLeaguePanel()">
               ${state.couponLeaguePanelOpen ? "Masquer les ligues" : "Choisir les ligues"}
-              ${state.couponLeagueSelection.includes("all") ? " ? Toutes" : ` ? ${state.couponLeagueSelection.length} s?lectionn?e(s)`}
+              ${state.couponLeagueSelection.includes("all") ? " · Toutes" : ` · ${state.couponLeagueSelection.length} sélectionnée(s)`}
             </button>
             <div class="filter-row ${state.couponLeaguePanelOpen ? "" : "hidden"}">
               <button class="filter-chip ${state.couponLeagueSelection.includes('all') ? 'active' : ''}" type="button" onclick="toggleCouponLeagueSelection('all')">Toutes</button>
@@ -1512,9 +1769,10 @@ function renderCouponPage() {
                   class="filter-chip ${state.couponLeagueSelection.includes(String(league.id)) ? 'active' : ''}"
                   type="button"
                   onclick="toggleCouponLeagueSelection('${escapeAttribute(league.id)}')"
-                >${escapeHtml(league.name)}</button>
+                >${escapeHtml(league.name)}${league.supportedByPredictionApi ? " · API" : " · famille"}</button>
               `).join("")}
             </div>
+            <p class="muted coupon-support-hint">${directSupportCount}/${eligibleLeagues.length || state.leagues.length} ligues choisies ont une correspondance directe avec l'API de prédiction.</p>
           </div>
         </div>
         <div class="config-row">
@@ -1533,10 +1791,20 @@ function renderCouponPage() {
                 <span class="coupon-match-number">#${index + 1}</span>
                 <span class="coupon-match-teams">${escapeHtml(item.match.O1)} vs ${escapeHtml(item.match.O2)}</span>
               </div>
+              <div class="coupon-match-subline">
+                <span>${escapeHtml(item.match.LE || item.match.L || "Ligue inconnue")}</span>
+                <span>${escapeHtml(getDisplayTime(item.match))}</span>
+                <span>${escapeHtml(formatTimestamp(item.match.S))}</span>
+              </div>
               <div class="coupon-prediction">
                 <span class="prediction-label">Prédiction:</span>
                 <span class="prediction-value">${escapeHtml(item.prediction)}</span>
                 <span class="prediction-confidence">Confiance: ${escapeHtml(item.confidence)}</span>
+              </div>
+              <div class="coupon-meta-line">
+                <span>${escapeHtml(item.marketLabel)}</span>
+                <span>${escapeHtml(item.family)}</span>
+                <span>${escapeHtml(item.detail || "API de prédiction")}</span>
               </div>
             </div>
           `).join("")}
@@ -1551,6 +1819,11 @@ function renderCouponPage() {
 
 function updateCouponCount(value) {
   state.couponCount = parseInt(value);
+  renderCouponPage();
+}
+
+function updateCouponMarket(value) {
+  state.couponMarket = value || "auto";
   renderCouponPage();
 }
 
@@ -1619,12 +1892,7 @@ async function generateCoupon() {
     return;
   }
 
-  const thresholdConfig = {
-    safe: { minConfidence: 65, scanCount: 24 },
-    super_safe: { minConfidence: 78, scanCount: 28 },
-    aggressive: { minConfidence: 52, scanCount: 32 }
-  };
-
+  const thresholdConfig = getCouponThresholdConfig();
   const config = thresholdConfig[state.couponThreshold];
   const selectedMatches = availableMatches
     .slice()
@@ -1643,17 +1911,19 @@ async function generateCoupon() {
       });
       const data = await response.json();
       const prediction = data.prediction;
-      const rawPrediction = prediction?.raw || data.raw || prediction;
-      const probabilities = prediction.result?.probabilities || {};
-      const confidence = getMainConfidence(probabilities, prediction.result?.prediction);
+      const couponPrediction = getCouponPredictionCandidate(prediction, match, state.couponMarket);
 
-      if (confidence >= config.minConfidence) {
+      if (couponPrediction && couponPrediction.confidenceValue >= config.minConfidence) {
         candidates.push({
           match,
-          prediction: getResultLabel(prediction.result?.prediction, match),
-          confidence,
-          rawPrediction,
-          family: prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L)
+          prediction: couponPrediction.label,
+          confidence: couponPrediction.confidence,
+          confidenceValue: couponPrediction.confidenceValue,
+          rawPrediction: prediction?.raw || data.raw || prediction,
+          family: prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L),
+          market: couponPrediction.market,
+          marketLabel: getCouponMarketLabel(couponPrediction.market),
+          detail: couponPrediction.detail
         });
       }
     } catch (error) {
@@ -1661,7 +1931,7 @@ async function generateCoupon() {
     }
   }
 
-  candidates.sort((left, right) => Number(right.confidence) - Number(left.confidence));
+  candidates.sort((left, right) => Number(right.confidenceValue) - Number(left.confidenceValue));
   state.couponMatches = candidates.slice(0, state.couponCount);
 
   if (state.couponMatches.length === 0 && candidates.length === 0) {
@@ -1670,19 +1940,23 @@ async function generateCoupon() {
       const key = String(match.I);
       const cachedPrediction = state.predictionCache[key];
       const prediction = cachedPrediction?.data?.prediction;
-      if (!prediction?.result?.prediction) {
+      const couponPrediction = getCouponPredictionCandidate(prediction, match, state.couponMarket);
+      if (!couponPrediction) {
         continue;
       }
-      const confidence = getMainConfidence(prediction.result?.probabilities || {}, prediction.result?.prediction);
       fallbackCandidates.push({
         match,
-        prediction: getResultLabel(prediction.result?.prediction, match),
-        confidence,
+        prediction: couponPrediction.label,
+        confidence: couponPrediction.confidence,
+        confidenceValue: couponPrediction.confidenceValue,
         rawPrediction: prediction?.raw || cachedPrediction?.data?.raw || prediction,
-        family: prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L)
+        family: prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L),
+        market: couponPrediction.market,
+        marketLabel: getCouponMarketLabel(couponPrediction.market),
+        detail: couponPrediction.detail
       });
     }
-    fallbackCandidates.sort((left, right) => Number(right.confidence) - Number(left.confidence));
+    fallbackCandidates.sort((left, right) => Number(right.confidenceValue) - Number(left.confidenceValue));
     state.couponMatches = fallbackCandidates.slice(0, state.couponCount);
   }
 
@@ -1708,7 +1982,7 @@ async function exportCouponImage() {
   try {
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
-    canvas.height = 1200 + (state.couponMatches.length * 200);
+    canvas.height = 1280 + (state.couponMatches.length * 260);
 
     const context = canvas.getContext("2d");
     const background = context.createLinearGradient(0, 0, 0, canvas.height);
@@ -1740,26 +2014,35 @@ async function exportCouponImage() {
     context.fillStyle = "#9fb0cc";
     context.font = "24px Arial";
     context.fillText(`Seuil: ${state.couponThreshold.toUpperCase()}`, 96, 220);
+    context.fillText(`Marché: ${getCouponMarketLabel(state.couponMarket)}`, 96, 254);
 
-    let yPos = 280;
+    let yPos = 320;
     state.couponMatches.forEach((item, index) => {
       context.fillStyle = "rgba(94, 234, 212, 0.16)";
       context.strokeStyle = "rgba(94, 234, 212, 0.32)";
-      roundRect(context, 96, yPos, 888, 180, 20, true, true);
+      roundRect(context, 96, yPos, 888, 230, 20, true, true);
 
       context.fillStyle = "#ecfeff";
       context.font = "700 22px Arial";
       context.fillText(`#${index + 1} - ${item.match.O1} vs ${item.match.O2}`, 132, yPos + 40);
 
+      context.fillStyle = "#9fb0cc";
+      context.font = "18px Arial";
+      wrapExportLine(context, `${item.match.LE || item.match.L || "Ligue inconnue"} · ${getDisplayTime(item.match)} · ${formatTimestamp(item.match.S)}`, 132, yPos + 74, 760, 24);
+
       context.fillStyle = "#ffffff";
       context.font = "900 36px Arial";
-      context.fillText(item.prediction, 132, yPos + 90);
+      wrapExportLine(context, item.prediction, 132, yPos + 126, 720, 38);
 
       context.fillStyle = "#ecfeff";
       context.font = "700 20px Arial";
-      context.fillText(`Confiance: ${item.confidence}`, 132, yPos + 130);
+      context.fillText(`Confiance: ${item.confidence}`, 132, yPos + 170);
 
-      yPos += 200;
+      context.fillStyle = "#cbd5e1";
+      context.font = "18px Arial";
+      wrapExportLine(context, `${item.marketLabel} · ${item.family} · ${item.detail || "API de prédiction"}`, 132, yPos + 204, 760, 22);
+
+      yPos += 260;
     });
 
     context.fillStyle = "#5eead4";
@@ -1781,6 +2064,8 @@ async function exportCouponImage() {
 function renderLeagueCard(league) {
   const leagueId = encodeRouteSegment(league.id);
   const summary = getMatchStatusSummary(league.matches);
+  const predictionSupportLabel = league.supportedByPredictionApi ? "API prediction OK" : "API prediction partielle";
+  const familyLabel = league.predictionFamily || getPredictionFamilyForLeagueName(league.name);
   return `
     <article class="card league-card">
       <div class="league-card-top">
@@ -1793,6 +2078,10 @@ function renderLeagueCard(league) {
       <div class="league-meta">
         <span class="muted">Pays: ${escapeHtml(league.country)}</span>
         <span class="muted">Sport ID: ${escapeHtml(league.sportId)}</span>
+      </div>
+      <div class="pill-row">
+        <span class="pill">${escapeHtml(familyLabel)}</span>
+        <span class="pill pill-soft">${escapeHtml(predictionSupportLabel)}</span>
       </div>
       <div class="league-card-stats">
         <div class="league-stat-chip"><span>Live</span><strong>${escapeHtml(summary.live)}</strong></div>
@@ -1840,19 +2129,240 @@ function getTeamContext(match, side) {
   if (side === "home") {
     return {
       name: match.O1,
-      city: match.O1CT || match.CN || match.CE || "Virtuel"
+      city: match.O1CT || match.CN || match.CE || "Virtuel",
+      logo: getCompetitorImageUrl(match, "home")
     };
   }
   return {
     name: match.O2,
-    city: match.O2CT || match.CN || match.CE || "Virtuel"
+    city: match.O2CT || match.CN || match.CE || "Virtuel",
+    logo: getCompetitorImageUrl(match, "away")
   };
+}
+
+function getFeedAssetUrl(value, kind = "generic") {
+  if (!value) {
+    return "";
+  }
+  const normalized = Array.isArray(value) ? value[0] : value;
+  if (!normalized) {
+    return "";
+  }
+  const raw = String(normalized).trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+  if (raw.startsWith("/")) {
+    return `https://1xbet.com${raw}`;
+  }
+  if (kind === "team") {
+    return `https://1xbet.com/LineFeedImages/teamlogos/${raw}`;
+  }
+  if (kind === "league") {
+    return `https://1xbet.com/LineFeedImages/championshiplogos/${raw}`;
+  }
+  return `https://1xbet.com/${raw.replace(/^\/+/, "")}`;
+}
+
+function getTeamLogoUrl(images, id) {
+  const file = Array.isArray(images) && images[0]
+    ? String(images[0]).trim()
+    : typeof id === "number" && id > 0
+      ? `${id}.png`
+      : "";
+  return file ? `https://1xbet.com/sfiles/logo_teams/${file}` : "";
+}
+
+function getCompetitorImageUrl(match, side) {
+  return side === "home"
+    ? getTeamLogoUrl(match.O1IMG, Number(match.O1I))
+    : getTeamLogoUrl(match.O2IMG, Number(match.O2I));
+}
+
+function getLeagueImageUrl(match) {
+  return getFeedAssetUrl(match.CHIMG, "league") || getFeedAssetUrl(match.SIMG, "generic");
+}
+
+function getTeamInitials(name) {
+  return String(name || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "?";
+}
+
+function renderTeamAvatar(name, imageUrl, className = "") {
+  const classes = ["team-avatar", className].filter(Boolean).join(" ");
+  if (imageUrl) {
+    return `<img class="${escapeAttribute(classes)}" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(name)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'${escapeAttribute(classes)} team-avatar-fallback',textContent:'${escapeAttribute(getTeamInitials(name))}'}))">`;
+  }
+  return `<span class="${escapeAttribute(classes)} team-avatar-fallback">${escapeHtml(getTeamInitials(name))}</span>`;
+}
+
+function getLiveClockLabel(match) {
+  const sc = match.SC || {};
+  if (isPrematchState(match)) {
+    return getDisplayTime(match);
+  }
+  if (sc.TS !== undefined && sc.TS !== null && sc.TS !== "") {
+    return `${sc.TS}s`;
+  }
+  return sc.SLS || "Temps inconnu";
+}
+
+function getLiveDataPoints(match) {
+  const sc = match.SC || {};
+  const points = [
+    sc.TS !== undefined && sc.TS !== null ? { label: "Chrono", value: `${sc.TS}s` } : null,
+    sc.TR !== undefined && sc.TR !== null && Number(sc.TR) >= 0 ? { label: "TR", value: String(sc.TR) } : null,
+    sc.TD !== undefined && sc.TD !== null && Number(sc.TD) >= 0 ? { label: "TD", value: String(sc.TD) } : null,
+    sc.GS !== undefined && sc.GS !== null ? { label: "GS", value: String(sc.GS) } : null,
+    sc.CP !== undefined && sc.CP !== null ? { label: "Période", value: String(sc.CP) } : null
+  ];
+  return points.filter(Boolean);
+}
+
+function renderPeriodScores(match) {
+  const periods = match.SC?.PS || [];
+  if (!periods.length) {
+    return "";
+  }
+  return `
+    <div class="live-period-strip">
+      ${periods.map((period) => {
+        const value = period?.Value || {};
+        const score = [value.S1, value.S2].filter((item) => item !== undefined).join(" - ");
+        return `
+          <div class="live-period-chip">
+            <span>${escapeHtml(value.NF || `Période ${period.Key || ""}`.trim())}</span>
+            <strong>${escapeHtml(score || "-")}</strong>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderLiveFeedMeta(match) {
+  const items = getLiveDataPoints(match);
+  if (!items.length) {
+    return "";
+  }
+  return `
+    <div class="livefeed-meta-grid">
+      ${items.map((item) => `
+        <div class="livefeed-meta-card">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.value)}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function describeCompetitionScope(match) {
+  const parts = [
+    match.CID !== undefined && match.CID !== null ? `CID ${match.CID}` : null,
+    match.COI !== undefined && match.COI !== null ? `COI ${match.COI}` : null,
+    match.DI ? `DI ${match.DI}` : null
+  ].filter(Boolean);
+  return parts.join(" · ") || "Non renseigné";
+}
+
+function describeVirtualInstance(match) {
+  const parts = [
+    match.VI ? `Instance ${match.VI}` : null,
+    match.VA !== undefined && match.VA !== null ? `Variante ${match.VA}` : null
+  ].filter(Boolean);
+  return parts.join(" · ") || "Non renseigné";
+}
+
+function getLivefeedNarrative(match) {
+  const sc = match.SC || {};
+  if (isPrematchState(match)) {
+    const tdValue = sc.TD !== undefined && sc.TD !== null ? String(sc.TD) : "n/a";
+    return `Pré-match · ${sc.CPS || match.TNS || "En attente"} · TD ${tdValue}`;
+  }
+  return [match.TNS || null, sc.CPS || null, sc.I || null].filter(Boolean).join(" · ") || "Livefeed actif";
+}
+
+function getAdvancedMarketSummary(match) {
+  const advancedTotals = getAdvancedTotals(match);
+  const advancedHandicaps = getAdvancedHandicaps(match);
+  return {
+    totalsCount: advancedTotals.length,
+    handicapsCount: advancedHandicaps.length,
+    totalsLines: [...new Set(advancedTotals.map((item) => item.P).filter((item) => item !== undefined && item !== null))].slice(0, 4),
+    handicapLines: [...new Set(advancedHandicaps.map((item) => item.P).filter((item) => item !== undefined && item !== null))].slice(0, 4)
+  };
+}
+
+function renderAdvancedMarketSummary(match) {
+  const summary = getAdvancedMarketSummary(match);
+  return `
+    <div class="advanced-summary-grid">
+      <div class="market-item">
+        <strong>AE Handicap (G=2)</strong>
+        <p>${escapeHtml(summary.handicapsCount)}</p>
+        <p>${escapeHtml(summary.handicapLines.length ? summary.handicapLines.map(formatMarketLine).join(", ") : "Aucune ligne")}</p>
+      </div>
+      <div class="market-item">
+        <strong>AE Total buts (G=17)</strong>
+        <p>${escapeHtml(summary.totalsCount)}</p>
+        <p>${escapeHtml(summary.totalsLines.length ? summary.totalsLines.map(formatMarketLine).join(", ") : "Aucune ligne")}</p>
+      </div>
+    </div>
+  `;
 }
 
 function findPrimaryMarket(match, predicate) {
   return (match.E || []).find((item) => !item.B && item.CE === 1 && predicate(item))
     || (match.E || []).find((item) => !item.B && predicate(item))
     || null;
+}
+
+function getMarketTypeLabel(item) {
+  if (!item) {
+    return "Marché";
+  }
+  const baseLabel = betTypeLabels[item.T] || `Type ${item.T}`;
+  return item.P !== undefined && item.P !== null && item.P !== ""
+    ? `${baseLabel} ${formatMarketLine(item.P)}`
+    : baseLabel;
+}
+
+function getFeaturedMarkets(match) {
+  const featured = [];
+  const seen = new Set();
+  const pushItem = (item, source = "livefeed") => {
+    if (!item) {
+      return;
+    }
+    const key = [source, item.G, item.T, item.P ?? "", item.C].join(":");
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    featured.push({
+      source,
+      label: getMarketTypeLabel(item),
+      group: marketGroupLabels[item.G] || `Groupe ${item.G}`,
+      odd: formatOddValue(item.C),
+      highlighted: item.CE === 1,
+      boosted: item.B === true
+    });
+  };
+
+  (match.E || []).filter((item) => item.CE === 1 || item.B === true).forEach((item) => pushItem(item, "principal"));
+  (match.AE || []).forEach((block) => {
+    (block.ME || []).filter((item) => item.CE === 1 || item.B === true).forEach((item) => pushItem(item, "avance"));
+  });
+
+  return featured.slice(0, 6);
 }
 
 function getThreeWayOdds(match) {
@@ -1933,6 +2443,24 @@ function renderMatchInsights(match) {
     .join("");
 }
 
+function renderFeaturedMarkets(match) {
+  const featuredMarkets = getFeaturedMarkets(match);
+  if (!featuredMarkets.length) {
+    return "";
+  }
+  return `
+    <div class="featured-market-strip">
+      ${featuredMarkets.map((item) => `
+        <div class="featured-market-chip ${item.highlighted ? "featured-market-chip-primary" : ""} ${item.boosted ? "featured-market-chip-boost" : ""}">
+          <span>${escapeHtml(item.group)}</span>
+          <strong>${escapeHtml(item.label)}</strong>
+          <small>${escapeHtml(item.odd)}</small>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderLeagueSpotlight(match) {
   return `
     <div class="sportsbook-spotlight">
@@ -2002,6 +2530,9 @@ function renderMatchCard(match) {
   const homeTeam = getTeamContext(match, "home");
   const awayTeam = getTeamContext(match, "away");
   const marketsCount = match.EC || (match.E || []).length;
+  const familyLabel = getPredictionFamilyForLeagueName(match.LE || match.L);
+  const leagueImageUrl = getLeagueImageUrl(match);
+  const liveMeta = getLiveDataPoints(match).slice(0, 3);
   return `
     <article class="match-card match-card-premium">
       <div class="match-card-top">
@@ -2009,15 +2540,29 @@ function renderMatchCard(match) {
           <span class="pill ${getStatusClass(match)}">${escapeHtml(getDisplayStatus(match))}</span>
           <span class="pill">${escapeHtml(getDisplayPhase(match))}</span>
           <span class="pill pill-soft">${escapeHtml(match.LE || match.L || "Ligue virtuelle")}</span>
+          <span class="pill">${escapeHtml(familyLabel)}</span>
         </div>
         <div class="match-kickoff-block">
           <span>Coup d'envoi</span>
-          <strong>${escapeHtml(formatTimestamp(match.S))}</strong>
+          <strong>${escapeHtml(getDisplayTime(match))}</strong>
+        </div>
+      </div>
+
+      <div class="match-live-banner">
+        <div class="match-live-banner-copy">
+          <span class="mini-badge">Livefeed</span>
+          <strong>${escapeHtml(match.SC?.CPS || match.TNS || "Flux live")}</strong>
+          <p>${escapeHtml(match.SC?.I || getCompactMatchInfo(match))}</p>
+        </div>
+        <div class="match-live-banner-side">
+          ${leagueImageUrl ? `<img class="league-emblem" src="${escapeAttribute(leagueImageUrl)}" alt="${escapeAttribute(match.LE || match.L || "Ligue")}" loading="lazy">` : ""}
+          <span>${escapeHtml(getLiveClockLabel(match))}</span>
         </div>
       </div>
 
       <div class="sportsbook-board">
         <div class="team-stack">
+          ${renderTeamAvatar(homeTeam.name, homeTeam.logo)}
           <span class="team-side-label">Equipe 1</span>
           <h3>${escapeHtml(homeTeam.name)}</h3>
           <p class="muted">${escapeHtml(homeTeam.city)}</p>
@@ -2027,19 +2572,24 @@ function renderMatchCard(match) {
           <p class="match-info-line">${escapeHtml(getCompactMatchInfo(match))}</p>
         </div>
         <div class="team-stack team-stack-right">
+          ${renderTeamAvatar(awayTeam.name, awayTeam.logo, "team-avatar-right")}
           <span class="team-side-label">Equipe 2</span>
           <h3>${escapeHtml(awayTeam.name)}</h3>
           <p class="muted">${escapeHtml(awayTeam.city)}</p>
         </div>
       </div>
 
-      <div class="sportsbook-odds-strip">
-        ${renderOutcomeOdds(match)}
-      </div>
-
-      <div class="market-signal-row">
-        ${renderMatchInsights(match)}
-      </div>
+      ${renderPeriodScores(match)}
+      ${liveMeta.length ? `
+        <div class="livefeed-meta-grid">
+          ${liveMeta.map((item) => `
+            <div class="livefeed-meta-card">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value)}</strong>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
 
       <div class="match-card-footer">
         <div class="match-card-volume">
@@ -2058,33 +2608,41 @@ function renderPredictionDetails(matchId) {
   const match = getMatchById(matchId);
   if (!match) {
     app.innerHTML = `<div class="card"><h2>Match introuvable</h2><a class="button-secondary" href="#/">Retour</a></div>`;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     return;
   }
 
   const advancedTotals = getAdvancedTotals(match);
   const advancedHandicaps = getAdvancedHandicaps(match);
   const primaryMarkets = (match.E || []).filter((item) => [1, 2, 3, 9, 10, 13, 14, 180, 181].includes(item.T));
+  const featuredMarkets = getFeaturedMarkets(match);
   const scoreDisplay = getScoreDisplay(match);
   const predictionState = state.predictionCache[String(match.I)] || { loading: true };
   const leagueId = encodeRouteSegment(match.LI);
   const exportMatchId = escapeAttribute(match.I);
+  const familyLabel = getPredictionFamilyForLeagueName(match.LE || match.L);
+  const homeTeam = getTeamContext(match, "home");
+  const awayTeam = getTeamContext(match, "away");
+  const leagueImageUrl = getLeagueImageUrl(match);
 
   app.innerHTML = `
     <section class="hero hero-detail">
       <div class="detail-header-top">
         <span class="mini-badge">Détail match</span>
         <span class="muted">${escapeHtml(match.LE || match.L)}</span>
+        ${leagueImageUrl ? `<img class="detail-league-emblem" src="${escapeAttribute(leagueImageUrl)}" alt="${escapeAttribute(match.LE || match.L || "Ligue")}" loading="lazy">` : ""}
       </div>
       <h2>${escapeHtml(match.O1)} vs ${escapeHtml(match.O2)}</h2>
       <div class="detail-score-row">
-        <div class="detail-team">${escapeHtml(match.O1)}</div>
+        <div class="detail-team detail-team-with-logo">${renderTeamAvatar(homeTeam.name, homeTeam.logo, "detail-team-avatar")}${escapeHtml(match.O1)}</div>
         <div class="detail-score ${hasLiveScore(match) ? "" : "score-muted"}">${escapeHtml(scoreDisplay)}</div>
-        <div class="detail-team detail-team-right">${escapeHtml(match.O2)}</div>
+        <div class="detail-team detail-team-right detail-team-with-logo">${renderTeamAvatar(awayTeam.name, awayTeam.logo, "detail-team-avatar")}${escapeHtml(match.O2)}</div>
       </div>
       <div class="pill-row">
         <span class="pill ${getStatusClass(match)}">${escapeHtml(getDisplayStatus(match))}</span>
         <span class="pill">${escapeHtml(getDisplayPhase(match))}</span>
         <span class="pill">${escapeHtml(getDisplayTime(match))}</span>
+        <span class="pill">${escapeHtml(familyLabel)}</span>
       </div>
       <div class="actions">
         <a class="button-secondary" href="#/league/${leagueId}">Retour à la ligue</a>
@@ -2092,6 +2650,23 @@ function renderPredictionDetails(matchId) {
           ${state.exportLoading ? "Création..." : "Créer l'image"}
         </button>
       </div>
+    </section>
+
+    <section class="card section-card">
+      <h3>Timeline livefeed</h3>
+      ${renderPeriodScores(match) || "<p class='muted'>Aucun découpage de période disponible pour ce match.</p>"}
+      ${renderLiveFeedMeta(match)}
+      <div class="section-subtitle-row">
+        <h4>Lecture du flux</h4>
+        <p class="muted">${escapeHtml(getLivefeedNarrative(match))}</p>
+      </div>
+      ${featuredMarkets.length ? `
+        <div class="section-subtitle-row">
+          <h4>Marchés vedettes LIVEFEED</h4>
+          <p class="muted">Sélections mises en avant par les marqueurs CE et B.</p>
+        </div>
+        ${renderFeaturedMarkets(match)}
+      ` : ""}
     </section>
 
     <section class="prediction-layout prediction-layout-top">
@@ -2112,8 +2687,20 @@ function renderPredictionDetails(matchId) {
           <div class="market-item"><strong>Marchés</strong><p>${escapeHtml(match.EC || (match.E || []).length)}</p></div>
           <div class="market-item"><strong>ID match</strong><p>${escapeHtml(match.I)}</p></div>
           <div class="market-item"><strong>Info match</strong><p>${escapeHtml(match.SC?.I || "Aucune information supplémentaire")}</p></div>
+          <div class="market-item"><strong>État textuel</strong><p>${escapeHtml(match.TNS || "-")}</p></div>
+          <div class="market-item"><strong>État courant CPS</strong><p>${escapeHtml(match.SC?.CPS || "-")}</p></div>
+          <div class="market-item"><strong>Pré-match TD</strong><p>${escapeHtml(match.SC?.TD ?? "-")}</p></div>
+          <div class="market-item"><strong>HMH</strong><p>${escapeHtml(match.HMH ?? "-")}</p></div>
+          <div class="market-item"><strong>Portée compétition</strong><p>${escapeHtml(describeCompetitionScope(match))}</p></div>
+          <div class="market-item"><strong>Instance virtuelle</strong><p>${escapeHtml(describeVirtualInstance(match))}</p></div>
         </div>
       </article>
+    </section>
+
+    <section class="card section-card">
+      <h3>Résumé AE</h3>
+      <p class="muted">Les marchés avancés du LIVEFEED sont surtout concentrés sur les groupes G=2 (handicap) et G=17 (total buts).</p>
+      ${renderAdvancedMarketSummary(match)}
     </section>
 
     <section class="card section-card">
@@ -2157,6 +2744,8 @@ function renderPredictionDetails(matchId) {
       </div>
     </section>
   `;
+
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
 
   const cacheKey = String(match.I);
   const cachedPrediction = state.predictionCache[cacheKey];
