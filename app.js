@@ -56,7 +56,10 @@ const state = {
   couponMatches: [],
   couponMessage: "",
   couponCount: 3,
-  couponThreshold: "safe"
+  couponThreshold: "safe",
+  couponLeagueSelection: ["all"],
+  couponLeaguePanelOpen: false,
+  couponGenerating: false
 };
 
 function renderLoading(message = "Chargement des ligues et matchs...") {
@@ -1266,6 +1269,7 @@ window.exportMatchesToCSV = exportMatchesToCSV;
 window.generatePDFReport = generatePDFReport;
 window.updateCouponCount = updateCouponCount;
 window.setCouponThreshold = setCouponThreshold;
+window.toggleCouponLeagueSelection = toggleCouponLeagueSelection;
 window.generateCoupon = generateCoupon;
 window.exportCouponImage = exportCouponImage;
 
@@ -1495,7 +1499,26 @@ function renderCouponPage() {
           </div>
         </div>
         <div class="config-row">
-          <button class="button" onclick="generateCoupon()">Générer le Coupon</button>
+          <label>Ligues ? inclure:</label>
+          <div class="coupon-league-panel">
+            <button class="button button-secondary" type="button" onclick="toggleCouponLeaguePanel()">
+              ${state.couponLeaguePanelOpen ? "Masquer les ligues" : "Choisir les ligues"}
+              ${state.couponLeagueSelection.includes("all") ? " ? Toutes" : ` ? ${state.couponLeagueSelection.length} s?lectionn?e(s)`}
+            </button>
+            <div class="filter-row ${state.couponLeaguePanelOpen ? "" : "hidden"}">
+              <button class="filter-chip ${state.couponLeagueSelection.includes('all') ? 'active' : ''}" type="button" onclick="toggleCouponLeagueSelection('all')">Toutes</button>
+              ${state.leagues.map((league) => `
+                <button
+                  class="filter-chip ${state.couponLeagueSelection.includes(String(league.id)) ? 'active' : ''}"
+                  type="button"
+                  onclick="toggleCouponLeagueSelection('${escapeAttribute(league.id)}')"
+                >${escapeHtml(league.name)}</button>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+        <div class="config-row">
+          <button class="button" type="button" data-action="generate-coupon" onclick="generateCoupon()" ${state.couponGenerating ? "disabled" : ""}>${state.couponGenerating ? "G?n?ration..." : "G?n?rer le Coupon"}</button>
         </div>
       </div>
     </section>
@@ -1519,7 +1542,7 @@ function renderCouponPage() {
           `).join("")}
         </div>
         <div class="coupon-actions">
-          <button class="button" onclick="exportCouponImage()">Créer l'image du Coupon</button>
+          <button class="button" type="button" data-action="export-coupon" onclick="exportCouponImage()">Cr?er l'image du Coupon</button>
         </div>
       ` : `<p class="muted">${escapeHtml(state.couponMessage || 'Cliquez sur "G?n?rer le Coupon" pour cr?er un nouveau coupon.')}</p>`}
     </section>
@@ -1535,27 +1558,78 @@ function setCouponThreshold(threshold) {
   state.couponThreshold = threshold;
   renderCouponPage();
 }
+
+function toggleCouponLeagueSelection(leagueId) {
+  const value = String(leagueId);
+  if (value === "all") {
+    state.couponLeagueSelection = ["all"];
+    renderCouponPage();
+    return;
+  }
+
+  const nextSelection = new Set((state.couponLeagueSelection || []).filter((item) => item !== "all"));
+  if (nextSelection.has(value)) {
+    nextSelection.delete(value);
+  } else {
+    nextSelection.add(value);
+  }
+
+  state.couponLeagueSelection = nextSelection.size ? Array.from(nextSelection) : ["all"];
+  renderCouponPage();
+}
+
+function toggleCouponLeaguePanel() {
+  state.couponLeaguePanelOpen = !state.couponLeaguePanelOpen;
+  renderCouponPage();
+}
+
+function getCouponEligibleLeagues() {
+  if (!Array.isArray(state.couponLeagueSelection) || state.couponLeagueSelection.includes("all")) {
+    return state.leagues;
+  }
+  const selectedIds = new Set(state.couponLeagueSelection.map((item) => String(item)));
+  return state.leagues.filter((league) => selectedIds.has(String(league.id)));
+}
 async function generateCoupon() {
-  const matches = getAllMatches();
+  const leagues = getCouponEligibleLeagues();
+  const matches = leagues.flatMap((league) => league.matches);
   const availableMatches = matches.filter(m => isPrematchState(m) || isLiveState(m));
 
+  if (state.couponGenerating) {
+    return;
+  }
+
+  state.couponGenerating = true;
   state.couponMessage = "";
+  renderCouponPage();
+
+  if (!leagues.length) {
+    state.couponMatches = [];
+    state.couponMessage = "Aucune ligue sélectionnée pour le coupon.";
+    state.couponGenerating = false;
+    renderCouponPage();
+    return;
+  }
 
   if (availableMatches.length < state.couponCount) {
     state.couponMatches = [];
     state.couponMessage = "Pas assez de matchs disponibles pour g?n?rer ce coupon.";
+    state.couponGenerating = false;
     renderCouponPage();
     return;
   }
 
   const thresholdConfig = {
-    safe: { minConfidence: 70, scanCount: 12 },
-    super_safe: { minConfidence: 85, scanCount: 16 },
-    aggressive: { minConfidence: 55, scanCount: 20 }
+    safe: { minConfidence: 65, scanCount: 24 },
+    super_safe: { minConfidence: 78, scanCount: 28 },
+    aggressive: { minConfidence: 52, scanCount: 32 }
   };
 
   const config = thresholdConfig[state.couponThreshold];
-  const selectedMatches = availableMatches.slice(0, Math.min(availableMatches.length, config.scanCount));
+  const selectedMatches = availableMatches
+    .slice()
+    .sort((left, right) => Number(left.S || 0) - Number(right.S || 0))
+    .slice(0, Math.min(availableMatches.length, config.scanCount));
 
   state.couponMatches = [];
   const candidates = [];
@@ -1590,12 +1664,35 @@ async function generateCoupon() {
   candidates.sort((left, right) => Number(right.confidence) - Number(left.confidence));
   state.couponMatches = candidates.slice(0, state.couponCount);
 
+  if (state.couponMatches.length === 0 && candidates.length === 0) {
+    const fallbackCandidates = [];
+    for (const match of selectedMatches.slice(0, Math.min(selectedMatches.length, 12))) {
+      const key = String(match.I);
+      const cachedPrediction = state.predictionCache[key];
+      const prediction = cachedPrediction?.data?.prediction;
+      if (!prediction?.result?.prediction) {
+        continue;
+      }
+      const confidence = getMainConfidence(prediction.result?.probabilities || {}, prediction.result?.prediction);
+      fallbackCandidates.push({
+        match,
+        prediction: getResultLabel(prediction.result?.prediction, match),
+        confidence,
+        rawPrediction: prediction?.raw || cachedPrediction?.data?.raw || prediction,
+        family: prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L)
+      });
+    }
+    fallbackCandidates.sort((left, right) => Number(right.confidence) - Number(left.confidence));
+    state.couponMatches = fallbackCandidates.slice(0, state.couponCount);
+  }
+
   if (state.couponMatches.length === 0) {
     state.couponMessage = "Aucun match ne correspond au seuil de confiance s?lectionn?. Essayez un seuil plus bas.";
   } else if (state.couponMatches.length < state.couponCount) {
     state.couponMessage = `Seulement ${state.couponMatches.length} match(s) correspondent au seuil ${state.couponThreshold}.`;
   }
 
+  state.couponGenerating = false;
   renderCouponPage();
 }
 
@@ -2193,10 +2290,21 @@ function renderAssistantMessages() {
 
 function handleAppClick(event) {
   const exportButton = event.target.closest("[data-export-match-id]");
-  if (!exportButton) {
+  if (exportButton) {
+    exportMatchPredictionImage(exportButton.getAttribute("data-export-match-id"));
     return;
   }
-  exportMatchPredictionImage(exportButton.getAttribute("data-export-match-id"));
+
+  const generateCouponButton = event.target.closest('[data-action="generate-coupon"]');
+  if (generateCouponButton) {
+    generateCoupon();
+    return;
+  }
+
+  const exportCouponButton = event.target.closest('[data-action="export-coupon"]');
+  if (exportCouponButton) {
+    exportCouponImage();
+  }
 }
 
 app.addEventListener("click", handleAppClick);

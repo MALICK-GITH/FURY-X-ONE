@@ -1571,3 +1571,13 @@ h1, h2, h3, p {
   padding-top: 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+.coupon-league-panel {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.coupon-league-panel .filter-row.hidden {
+  display: none;
+}
