@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08111f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fury X One">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Fury X One</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -19,7 +24,10 @@
           </div>
         </div>
       </div>
-      <a class="home-link" href="#/">Accueil</a>
+      <div class="topbar-actions">
+        <a class="home-link" href="#/">Accueil</a>
+        <button id="fullscreen-toggle" class="button-secondary fullscreen-toggle" type="button">Plein écran</button>
+      </div>
     </header>
 
     <main id="app"></main>

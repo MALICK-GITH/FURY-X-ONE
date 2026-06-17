@@ -28,6 +28,7 @@ const marketGroupLabels = {
 const app = document.getElementById("app");
 const assistantToggle = document.getElementById("assistant-toggle");
 const bottomNavAssistant = document.getElementById("bottom-nav-assistant");
+const fullscreenToggle = document.getElementById("fullscreen-toggle");
 const assistantPanel = document.getElementById("assistant-panel");
 const assistantClose = document.getElementById("assistant-close");
 const assistantMessagesEl = document.getElementById("assistant-messages");
@@ -849,6 +850,21 @@ function drawRoundedImage(context, image, x, y, width, height, radius = 18) {
   context.restore();
 }
 
+function fillRoundedPanel(context, x, y, width, height, options = {}) {
+  const {
+    radius = 24,
+    fill = "rgba(255,255,255,0.05)",
+    stroke = "rgba(255,255,255,0.08)",
+    lineWidth = 1.5
+  } = options;
+  context.save();
+  context.fillStyle = fill;
+  context.strokeStyle = stroke;
+  context.lineWidth = lineWidth;
+  roundRect(context, x, y, width, height, radius, true, true);
+  context.restore();
+}
+
 function getCouponThresholdConfig() {
   return {
     safe: { minConfidence: 0.65, scanCount: 24 },
@@ -1074,93 +1090,109 @@ async function exportMatchPredictionImage(matchId) {
       `Virtuel: ${describeVirtualInstance(match)}`
     ];
     const canvas = document.createElement("canvas");
-    canvas.width = 1080;
-    canvas.height = 1860;
+    canvas.width = 1200;
+    canvas.height = 1900;
 
     const context = canvas.getContext("2d");
     const background = context.createLinearGradient(0, 0, 0, canvas.height);
     background.addColorStop(0, "#07101d");
-    background.addColorStop(0.55, "#0b1324");
-    background.addColorStop(1, "#0b1020");
+    background.addColorStop(0.5, "#0b1324");
+    background.addColorStop(1, "#0f172a");
     context.fillStyle = background;
     context.fillRect(0, 0, canvas.width, canvas.height);
 
-    const glow = context.createRadialGradient(860, 180, 30, 860, 180, 360);
-    glow.addColorStop(0, "rgba(94, 234, 212, 0.26)");
+    const glow = context.createRadialGradient(940, 170, 30, 940, 170, 420);
+    glow.addColorStop(0, "rgba(94, 234, 212, 0.24)");
     glow.addColorStop(1, "rgba(94, 234, 212, 0)");
     context.fillStyle = glow;
     context.fillRect(0, 0, canvas.width, canvas.height);
 
-    context.fillStyle = "rgba(16, 27, 49, 0.94)";
-    context.strokeStyle = "rgba(255, 255, 255, 0.08)";
-    context.lineWidth = 2;
-    roundRect(context, 56, 52, 968, 1596, 36, true, true);
+    fillRoundedPanel(context, 52, 46, 1096, 1808, {
+      radius: 38,
+      fill: "rgba(11, 18, 33, 0.94)",
+      stroke: "rgba(255,255,255,0.08)",
+      lineWidth: 2
+    });
 
     context.fillStyle = "#5eead4";
     context.font = "700 30px Arial";
-    context.fillText("FURY X ONE", 96, 118);
+    context.fillText("FURY X ONE · MATCH CARD", 92, 112);
 
-    context.fillStyle = "#f5f7fb";
-    context.font = "900 54px Arial";
-    context.fillText(`${match.O1} vs ${match.O2}`, 96, 198);
+    drawRoundedImage(context, leagueLogo, 1040, 78, 74, 74, 20);
+
+    context.fillStyle = "#f8fbff";
+    context.font = "900 52px Arial";
+    wrapExportLine(context, `${match.O1} vs ${match.O2}`, 92, 184, 860, 60);
 
     context.fillStyle = "#9fb0cc";
     context.font = "28px Arial";
-    context.fillText(match.LE || match.L || "Ligue inconnue", 96, 244);
-    drawRoundedImage(context, leagueLogo, 884, 174, 64, 64, 18);
+    context.fillText(match.LE || match.L || "Ligue inconnue", 92, 254);
 
-    context.fillStyle = "rgba(255, 255, 255, 0.04)";
-    roundRect(context, 96, 268, 888, 160, 24, true, false);
-    context.fillStyle = "#cbd5e1";
+    fillRoundedPanel(context, 92, 286, 1016, 174, {
+      radius: 24,
+      fill: "rgba(255,255,255,0.045)",
+      stroke: "rgba(255,255,255,0.07)"
+    });
+    context.fillStyle = "#d7e3f4";
     context.font = "21px Arial";
-    let contextY = 312;
+    let contextY = 330;
     contextLines.forEach((line) => {
-      wrapExportLine(context, line, 128, contextY, 810, 28);
+      wrapExportLine(context, line, 124, contextY, 930, 28);
       contextY += 28;
     });
 
-    context.fillStyle = "rgba(255, 255, 255, 0.05)";
-    roundRect(context, 96, 452, 888, 176, 28, true, false);
+    fillRoundedPanel(context, 92, 494, 1016, 196, {
+      radius: 28,
+      fill: "rgba(255,255,255,0.05)",
+      stroke: "rgba(255,255,255,0.08)"
+    });
 
-    context.fillStyle = "#f5f7fb";
+    drawRoundedImage(context, homeLogo, 128, 528, 70, 70, 20);
+    drawRoundedImage(context, awayLogo, 1002, 528, 70, 70, 20);
+
+    context.fillStyle = "#f8fbff";
     context.font = "700 28px Arial";
-    drawRoundedImage(context, homeLogo, 134, 478, 52, 52, 16);
-    context.fillText(match.O1, 134, 516);
+    context.fillText(match.O1, 214, 560);
     context.textAlign = "center";
-    context.font = "900 58px Arial";
-    context.fillText(getScoreDisplay(match), 540, 536);
+    context.font = "900 64px Arial";
+    context.fillText(getScoreDisplay(match), 600, 574);
     context.textAlign = "right";
     context.font = "700 28px Arial";
-    drawRoundedImage(context, awayLogo, 894, 478, 52, 52, 16);
-    context.fillText(match.O2, 946, 516);
+    context.fillText(match.O2, 982, 560);
     context.textAlign = "left";
 
     context.fillStyle = "#9fb0cc";
     context.font = "24px Arial";
-    context.fillText(`${getDisplayStatus(match)} · ${getDisplayPhase(match)} · ${getDisplayTime(match)}`, 134, 580);
+    context.fillText(`${getDisplayStatus(match)} · ${getDisplayPhase(match)} · ${getDisplayTime(match)}`, 214, 608);
 
-    context.fillStyle = "rgba(94, 234, 212, 0.16)";
-    context.strokeStyle = "rgba(94, 234, 212, 0.32)";
-    roundRect(context, 96, 680, 888, 244, 30, true, true);
+    fillRoundedPanel(context, 92, 726, 1016, 256, {
+      radius: 30,
+      fill: "rgba(94, 234, 212, 0.14)",
+      stroke: "rgba(94, 234, 212, 0.28)",
+      lineWidth: 2
+    });
 
     context.fillStyle = "#ecfeff";
     context.font = "700 24px Arial";
-    context.fillText("PRÉDICTION PRINCIPALE", 132, 736);
+    context.fillText("PARI PRINCIPAL", 126, 782);
 
     context.fillStyle = "#ffffff";
     context.font = "900 72px Arial";
-    wrapExportLine(context, getPredictionHeadline(prediction, match), 132, 824, 760, 68);
+    wrapExportLine(context, getPredictionHeadline(prediction, match), 126, 870, 930, 68);
 
-    context.fillStyle = "#ecfeff";
+    context.fillStyle = "#e6fbff";
     context.font = "28px Arial";
-    wrapExportLine(context, getPredictionFooter(predictionState, match), 132, 864, 810, 36);
+    wrapExportLine(context, getPredictionFooter(predictionState, match), 126, 926, 900, 34);
 
-    context.fillStyle = "rgba(255, 255, 255, 0.04)";
-    roundRect(context, 96, 970, 888, 420, 28, true, false);
+    fillRoundedPanel(context, 92, 1022, 1016, 430, {
+      radius: 28,
+      fill: "rgba(255,255,255,0.045)",
+      stroke: "rgba(255,255,255,0.07)"
+    });
 
     context.fillStyle = "#f5f7fb";
     context.font = "700 28px Arial";
-    context.fillText("PRÉDICTIONS COMPLÈTES", 132, 1028);
+    context.fillText("OPTIONS DE PARI", 126, 1078);
 
     const x1x2 = rawPrediction.predictions?.["1x2"] || {};
     const totalGoalsData = rawPrediction.predictions?.total_goals || {};
@@ -1168,51 +1200,54 @@ async function exportMatchPredictionImage(matchId) {
     const parityData = rawPrediction.predictions?.parity || {};
     const exactScoreData = rawPrediction.predictions?.exact_score || {};
 
-    let yPos = 1080;
+    let yPos = 1132;
 
     context.fillStyle = "#5eead4";
-    context.font = "700 22px Arial";
-    context.fillText(`Famille: ${family}`, 132, yPos);
-    yPos += 40;
+    context.font = "700 24px Arial";
+    context.fillText(`Famille API: ${family}`, 126, yPos);
+    yPos += 52;
 
     context.fillStyle = "#ecfeff";
-    context.font = "700 22px Arial";
-    context.fillText("Score Exact:", 132, yPos);
+    context.font = "700 24px Arial";
+    context.fillText("Score exact", 126, yPos);
     context.fillStyle = "#ffffff";
-    context.font = "900 36px Arial";
-    context.fillText(exactScoreData.prediction || "-", 280, yPos);
-    yPos += 50;
+    context.font = "900 38px Arial";
+    context.fillText(exactScoreData.prediction || "-", 340, yPos);
+    yPos += 58;
 
     context.fillStyle = "#ecfeff";
-    context.font = "700 22px Arial";
-    context.fillText("Total Buts:", 132, yPos);
+    context.font = "700 24px Arial";
+    context.fillText("Total buts", 126, yPos);
     context.fillStyle = "#ffffff";
-    context.font = "900 36px Arial";
-    context.fillText(formatPredictionNumber(totalGoalsData.predicted || "-"), 280, yPos);
-    yPos += 50;
+    context.font = "900 38px Arial";
+    context.fillText(formatPredictionNumber(totalGoalsData.predicted || "-"), 340, yPos);
+    yPos += 58;
 
     context.fillStyle = "#ecfeff";
-    context.font = "700 22px Arial";
-    context.fillText("1X2:", 132, yPos);
+    context.font = "700 24px Arial";
+    context.fillText("1X2", 126, yPos);
     context.fillStyle = "#ffffff";
-    context.font = "700 20px Arial";
-    context.fillText(`H: ${formatPercent(x1x2.home)} | D: ${formatPercent(x1x2.draw)} | A: ${formatPercent(x1x2.away)}`, 200, yPos);
-    yPos += 50;
+    context.font = "700 22px Arial";
+    wrapExportLine(context, `Domicile ${formatPercent(x1x2.home)} · Nul ${formatPercent(x1x2.draw)} · Extérieur ${formatPercent(x1x2.away)}`, 340, yPos, 640, 28);
+    yPos += 58;
 
     context.fillStyle = "#ecfeff";
-    context.font = "700 22px Arial";
-    context.fillText("Parité:", 132, yPos);
+    context.font = "700 24px Arial";
+    context.fillText("Parité", 126, yPos);
     context.fillStyle = "#ffffff";
-    context.font = "700 20px Arial";
-    context.fillText(`Pair: ${formatPercent(parityData.pair)} | Impair: ${formatPercent(parityData.impair)}`, 220, yPos);
-    yPos += 50;
+    context.font = "700 22px Arial";
+    wrapExportLine(context, `Pair ${formatPercent(parityData.pair)} · Impair ${formatPercent(parityData.impair)}`, 340, yPos, 640, 28);
+    yPos += 70;
 
-    context.fillStyle = "rgba(255, 255, 255, 0.04)";
-    roundRect(context, 96, 1430, 888, 220, 28, true, false);
+    fillRoundedPanel(context, 92, 1492, 1016, 190, {
+      radius: 24,
+      fill: "rgba(255,255,255,0.045)",
+      stroke: "rgba(255,255,255,0.07)"
+    });
 
     context.fillStyle = "#f5f7fb";
     context.font = "700 28px Arial";
-    context.fillText("RÉSUMÉ DU MATCH", 132, 1488);
+    context.fillText("RÉSUMÉ CONTEXTE", 126, 1546);
 
     context.fillStyle = "#9fb0cc";
     context.font = "24px Arial";
@@ -1223,22 +1258,22 @@ async function exportMatchPredictionImage(matchId) {
       `HMH : ${match.HMH ?? "-"}`,
       `AE vedette : ${featuredMarkets[0] ? `${featuredMarkets[0].group} · ${featuredMarkets[0].label} · ${featuredMarkets[0].odd}` : "Aucun"}`
     ].join(" · ");
-    wrapExportLine(context, summaryText, 132, 1538, 810, 34);
+    wrapExportLine(context, summaryText, 126, 1594, 930, 32);
 
     if (featuredMarkets.length > 1) {
       context.fillStyle = "#5eead4";
       context.font = "700 24px Arial";
-      context.fillText("MARCHÉS VEDETTES LIVEFEED", 132, 1688);
+      context.fillText("MARCHÉS VEDETTES LIVEFEED", 126, 1728);
       context.fillStyle = "#ecfeff";
       context.font = "20px Arial";
       featuredMarkets.slice(0, 3).forEach((item, index) => {
-        wrapExportLine(context, `• ${item.group} · ${item.label} · ${item.odd}`, 132, 1728 + (index * 30), 800, 28);
+        wrapExportLine(context, `• ${item.group} · ${item.label} · ${item.odd}`, 126, 1768 + (index * 30), 900, 28);
       });
     }
 
     context.fillStyle = "#5eead4";
-    context.font = "700 24px Arial";
-    context.fillText("Image générée depuis la page détails Fury X One", 132, 1800);
+    context.font = "700 22px Arial";
+    context.fillText("Image générée depuis la page détails Fury X One", 126, 1850);
 
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/png");
@@ -1544,6 +1579,32 @@ function updateBottomNav(routeName) {
   });
 }
 
+function isStandaloneMode() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+}
+
+function updateFullscreenUi() {
+  const isFullscreen = Boolean(document.fullscreenElement) || isStandaloneMode();
+  document.body.classList.toggle("app-fullscreen", isFullscreen);
+  if (fullscreenToggle) {
+    fullscreenToggle.textContent = isFullscreen ? "Quitter plein écran" : "Plein écran";
+  }
+}
+
+async function toggleFullscreenApp() {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await document.documentElement.requestFullscreen();
+    }
+  } catch (error) {
+    console.warn("Fullscreen non disponible:", error);
+  } finally {
+    updateFullscreenUi();
+  }
+}
+
 async function bootstrap() {
   state.loading = true;
   state.error = "";
@@ -1600,9 +1661,12 @@ window.exportCouponImage = exportCouponImage;
 
 assistantToggle.addEventListener("click", () => toggleAssistant());
 bottomNavAssistant?.addEventListener("click", () => toggleAssistant());
+fullscreenToggle?.addEventListener("click", () => toggleFullscreenApp());
 assistantClose.addEventListener("click", () => toggleAssistant(false));
 assistantForm.addEventListener("submit", handleAssistantSubmit);
+document.addEventListener("fullscreenchange", updateFullscreenUi);
 renderAssistantMessages();
+updateFullscreenUi();
 
 function escapeHtml(text) {
   return String(text ?? "")
@@ -2081,8 +2145,8 @@ async function exportCouponImage() {
       ]).map((promise) => promise.catch(() => null))
     );
     const canvas = document.createElement("canvas");
-    canvas.width = 1080;
-    canvas.height = 1280 + (state.couponMatches.length * 260);
+    canvas.width = 1200;
+    canvas.height = 1320 + (state.couponMatches.length * 270);
 
     const context = canvas.getContext("2d");
     const background = context.createLinearGradient(0, 0, 0, canvas.height);
@@ -2101,59 +2165,78 @@ async function exportCouponImage() {
     context.fillStyle = "rgba(16, 27, 49, 0.94)";
     context.strokeStyle = "rgba(255, 255, 255, 0.08)";
     context.lineWidth = 2;
-    roundRect(context, 56, 52, 968, canvas.height - 104, 36, true, true);
+    fillRoundedPanel(context, 52, 46, 1096, canvas.height - 92, {
+      radius: 38,
+      fill: "rgba(11, 18, 33, 0.94)",
+      stroke: "rgba(255,255,255,0.08)",
+      lineWidth: 2
+    });
 
     context.fillStyle = "#5eead4";
     context.font = "700 30px Arial";
-    context.fillText("FURY X ONE - COUPON", 96, 118);
+    context.fillText("FURY X ONE · COUPON", 92, 112);
 
     context.fillStyle = "#f5f7fb";
     context.font = "900 42px Arial";
-    context.fillText(`Coupon ${state.couponCount} Matchs`, 96, 180);
+    context.fillText(`Coupon ${state.couponCount} Matchs`, 92, 176);
 
     context.fillStyle = "#9fb0cc";
     context.font = "24px Arial";
-    context.fillText(`Seuil: ${state.couponThreshold.toUpperCase()}`, 96, 220);
-    context.fillText(`Marché: ${getCouponMarketLabel(state.couponMarket)}`, 96, 254);
-    context.fillText(`Cote totale: ${formatOddDisplay(getCouponTotalOdds())}`, 96, 288);
+    context.fillText(`Seuil: ${state.couponThreshold.toUpperCase()}`, 92, 220);
+    context.fillText(`Marché: ${getCouponMarketLabel(state.couponMarket)}`, 92, 254);
 
-    let yPos = 350;
+    fillRoundedPanel(context, 840, 128, 236, 120, {
+      radius: 24,
+      fill: "rgba(94, 234, 212, 0.16)",
+      stroke: "rgba(94, 234, 212, 0.24)"
+    });
+    context.fillStyle = "#c7fbf4";
+    context.font = "700 18px Arial";
+    context.fillText("COTE TOTALE", 876, 168);
+    context.fillStyle = "#ffffff";
+    context.font = "900 44px Arial";
+    context.fillText(formatOddDisplay(getCouponTotalOdds()), 876, 222);
+
+    let yPos = 306;
     state.couponMatches.forEach((item, index) => {
       const homeLogo = couponLogoImages[index * 2] || null;
       const awayLogo = couponLogoImages[(index * 2) + 1] || null;
-      context.fillStyle = "rgba(94, 234, 212, 0.16)";
-      context.strokeStyle = "rgba(94, 234, 212, 0.32)";
-      roundRect(context, 96, yPos, 888, 230, 20, true, true);
+      fillRoundedPanel(context, 92, yPos, 1016, 230, {
+        radius: 24,
+        fill: "rgba(255,255,255,0.05)",
+        stroke: "rgba(255,255,255,0.08)"
+      });
 
-      drawRoundedImage(context, homeLogo, 132, yPos + 26, 42, 42, 14);
-      drawRoundedImage(context, awayLogo, 182, yPos + 26, 42, 42, 14);
+      drawRoundedImage(context, homeLogo, 126, yPos + 24, 50, 50, 16);
+      drawRoundedImage(context, awayLogo, 184, yPos + 24, 50, 50, 16);
 
       context.fillStyle = "#ecfeff";
       context.font = "700 22px Arial";
-      context.fillText(`#${index + 1} - ${item.match.O1} vs ${item.match.O2}`, 238, yPos + 40);
+      context.fillText(`#${index + 1} - ${item.match.O1} vs ${item.match.O2}`, 252, yPos + 42);
 
       context.fillStyle = "#9fb0cc";
       context.font = "18px Arial";
-      wrapExportLine(context, `${item.match.LE || item.match.L || "Ligue inconnue"} · ${getDisplayTime(item.match)} · ${formatTimestamp(item.match.S)} · Cote ${formatOddDisplay(item.oddValue)}`, 132, yPos + 74, 760, 24);
+      wrapExportLine(context, `${item.match.LE || item.match.L || "Ligue inconnue"} · ${getDisplayTime(item.match)} · ${formatTimestamp(item.match.S)}`, 126, yPos + 88, 830, 24);
 
       context.fillStyle = "#ffffff";
-      context.font = "900 36px Arial";
-      wrapExportLine(context, item.prediction, 132, yPos + 126, 720, 38);
+      context.font = "900 38px Arial";
+      wrapExportLine(context, item.prediction, 126, yPos + 142, 760, 40);
 
       context.fillStyle = "#ecfeff";
       context.font = "700 20px Arial";
-      context.fillText(`Confiance: ${item.confidence}`, 132, yPos + 170);
+      context.fillText(`Confiance: ${item.confidence}`, 126, yPos + 188);
+      context.fillText(`Cote: ${formatOddDisplay(item.oddValue)}`, 874, yPos + 188);
 
       context.fillStyle = "#cbd5e1";
       context.font = "18px Arial";
-      wrapExportLine(context, `${item.marketLabel} · ${item.family} · ${item.detail || "API de prédiction"}`, 132, yPos + 204, 760, 22);
+      wrapExportLine(context, `${item.marketLabel} · ${item.family} · ${item.detail || "API de prédiction"}`, 126, yPos + 216, 850, 22);
 
-      yPos += 260;
+      yPos += 270;
     });
 
     context.fillStyle = "#5eead4";
     context.font = "700 24px Arial";
-    context.fillText("Coupon généré depuis Fury X One", 96, canvas.height - 60);
+    context.fillText("Coupon généré depuis Fury X One", 92, canvas.height - 56);
 
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/png");
