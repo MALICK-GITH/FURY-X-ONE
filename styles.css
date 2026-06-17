@@ -1070,6 +1070,476 @@ body.app-fullscreen .assistant-toggle {
   }
 }
 
+/* Mobile-first sportsbook redesign overrides */
+
+.app-shell {
+  width: 100%;
+  max-width: 100%;
+  padding: 10px 10px 108px;
+}
+
+.topbar {
+  position: static;
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 22px;
+  gap: 14px;
+}
+
+.brand-block,
+.brand-row,
+.topbar-actions {
+  width: 100%;
+}
+
+.brand-row {
+  gap: 10px;
+  align-items: center;
+}
+
+.brand-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  font-size: 17px;
+}
+
+h1 {
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.brand-subtitle,
+.eyebrow {
+  font-size: 11px;
+}
+
+.topbar-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.hero,
+.card,
+.prediction-box,
+.market-box,
+.match-card,
+.league-card {
+  border-radius: 20px;
+}
+
+.hero {
+  padding: 18px 14px;
+  margin-bottom: 14px;
+}
+
+.card,
+.prediction-box,
+.market-box {
+  padding: 16px 14px;
+}
+
+.section-block {
+  margin-bottom: 12px;
+}
+
+.section-heading {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.section-heading h2,
+.hero h2 {
+  font-size: 21px;
+  line-height: 1.1;
+}
+
+.stats,
+.grid,
+.toolbar,
+.status-grid,
+.status-row {
+  gap: 10px;
+}
+
+.stat,
+.status-card {
+  padding: 12px;
+  border-radius: 16px;
+}
+
+.stat strong,
+.status-card strong {
+  font-size: 22px;
+}
+
+.leagues,
+.matches,
+.matches-sportsbook,
+.prediction-layout,
+.prediction-grid,
+.sportsbook-summary-grid,
+.league-card-stats,
+.market-signal-row,
+.prediction-1x2-grid,
+.prediction-overunder-grid,
+.prediction-handicap-grid,
+.advanced-summary-grid,
+.livefeed-meta-grid {
+  grid-template-columns: 1fr;
+}
+
+.matches,
+.matches-sportsbook {
+  gap: 10px;
+}
+
+.league-card {
+  gap: 10px;
+  padding: 12px;
+}
+
+.match-card,
+.match-card-premium {
+  gap: 10px;
+  padding: 12px;
+  border-radius: 20px;
+}
+
+.match-card-top,
+.league-card-top,
+.detail-header-top,
+.match-card-footer,
+.coupon-match-header,
+.config-row,
+.detail-score-row {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.pill-row,
+.market-list,
+.odds-row,
+.filter-row {
+  gap: 8px;
+}
+
+.pill,
+.odd-pill,
+.filter-chip {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.sportsbook-board,
+.sportsbook-spotlight,
+.match-live-banner {
+  grid-template-columns: 1fr;
+  padding: 10px;
+  gap: 10px;
+}
+
+.sportsbook-odds-strip,
+.sportsbook-spotlight-odds {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sportsbook-odd-box {
+  padding: 10px 8px;
+  min-height: 84px;
+}
+
+.sportsbook-odd-box strong {
+  font-size: 18px;
+}
+
+.team-stack,
+.team-stack-right,
+.match-kickoff-block,
+.match-live-banner-side,
+.detail-team,
+.detail-team-right {
+  text-align: left;
+  justify-items: start;
+}
+
+.team-avatar,
+.league-emblem,
+.detail-league-emblem {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+}
+
+.team-stack h3,
+.detail-team {
+  font-size: 16px;
+}
+
+.score,
+.match-card-premium .score,
+.detail-score {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 16px;
+  font-size: 22px;
+}
+
+.score-muted {
+  font-size: 15px;
+}
+
+.board-center {
+  min-width: 0;
+  width: 100%;
+  justify-items: start;
+}
+
+.match-info-line,
+.match-live-banner-copy p,
+.team-side-label,
+.match-card-volume span,
+.brand-subtitle {
+  font-size: 12px;
+}
+
+.live-period-chip,
+.featured-market-chip,
+.livefeed-meta-card,
+.market-item,
+.prediction-1x2-item,
+.prediction-overunder-item,
+.prediction-handicap-item,
+.coupon-match-item {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.prediction-full-display {
+  gap: 14px;
+}
+
+.prediction-section {
+  padding: 16px 14px;
+  border-radius: 18px;
+}
+
+.prediction-section-title {
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+
+.prediction-1x2-value {
+  font-size: 24px;
+}
+
+.prediction-total-goals-value,
+.prediction-exact-score-value {
+  font-size: 40px;
+}
+
+.coupon-config {
+  gap: 16px;
+  padding: 16px 14px;
+}
+
+.config-row label {
+  min-width: 0;
+  font-size: 14px;
+}
+
+.config-row select,
+.threshold-btn {
+  width: 100%;
+  min-height: 46px;
+}
+
+.threshold-selector {
+  display: grid;
+  grid-template-columns: 1fr;
+  width: 100%;
+}
+
+.coupon-total-odds-card strong {
+  font-size: 26px;
+}
+
+.coupon-prediction {
+  padding: 14px;
+}
+
+.prediction-value {
+  font-size: 20px;
+}
+
+.prediction-confidence {
+  margin-left: 0;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  width: 100%;
+}
+
+.home-link,
+.button,
+.button-secondary {
+  width: 100%;
+  min-height: 46px;
+}
+
+.assistant-toggle {
+  right: 14px;
+  bottom: 94px;
+  width: 56px;
+  height: 56px;
+}
+
+.assistant-panel {
+  right: 10px;
+  left: 10px;
+  bottom: 146px;
+  width: auto;
+  height: min(70vh, 540px);
+  border-radius: 24px;
+}
+
+.assistant-form textarea {
+  min-height: 90px;
+}
+
+.bottom-nav {
+  display: grid;
+}
+
+@media (min-width: 700px) {
+  .app-shell {
+    padding: 14px 14px 40px;
+  }
+
+  .topbar-actions {
+    display: flex;
+    width: auto;
+  }
+
+  .prediction-layout,
+  .matches,
+  .matches-sportsbook,
+  .leagues {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .league-card {
+    padding: 14px;
+  }
+
+  .match-card,
+  .match-card-premium {
+    padding: 13px;
+    gap: 10px;
+  }
+
+  .sportsbook-board,
+  .sportsbook-spotlight {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  .match-live-banner {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .sportsbook-summary-grid,
+  .league-card-stats,
+  .market-signal-row,
+  .prediction-1x2-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .threshold-selector {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    width: min(100%, 1220px);
+    margin: 0 auto;
+    padding: 18px 18px 42px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 10px;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .brand-block {
+    width: auto;
+  }
+
+  .topbar-actions {
+    width: auto;
+  }
+
+  .brand-mark {
+    width: 54px;
+    height: 54px;
+    border-radius: 18px;
+    font-size: 20px;
+  }
+
+  h1 {
+    font-size: 34px;
+  }
+
+  .hero {
+    padding: 24px 20px;
+  }
+
+  .prediction-layout {
+    grid-template-columns: 1.25fr 0.9fr;
+  }
+
+  .matches,
+  .matches-sportsbook,
+  .leagues {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .league-card {
+    padding: 15px;
+    gap: 12px;
+  }
+
+  .match-card,
+  .match-card-premium {
+    padding: 14px;
+    gap: 11px;
+  }
+
+  .sportsbook-summary-grid,
+  .league-card-stats,
+  .market-signal-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .prediction-1x2-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bottom-nav {
+    display: none;
+  }
+}
+
 
 .export-image-button {
   min-width: 190px;
