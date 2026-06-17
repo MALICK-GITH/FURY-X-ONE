@@ -774,6 +774,81 @@ function getCouponMarketLabel(market) {
   return "Auto";
 }
 
+function getLocalAssetProxyUrl(url) {
+  if (!url) {
+    return "";
+  }
+  return `/api/asset?url=${encodeURIComponent(url)}`;
+}
+
+function getCouponSelectionOdd(match, market) {
+  if (!match) {
+    return null;
+  }
+  if (market === "result") {
+    const homeOdd = findPrimaryMarket(match, (item) => item.T === 1)?.C;
+    const drawOdd = findPrimaryMarket(match, (item) => item.T === 3)?.C;
+    const awayOdd = findPrimaryMarket(match, (item) => item.T === 2)?.C;
+    const best = [homeOdd, drawOdd, awayOdd].map((value) => Number(value)).find((value) => !Number.isNaN(value));
+    return Number.isNaN(best) ? null : best;
+  }
+  if (market === "goals") {
+    const marketItem = findPrimaryMarket(match, (item) => item.G === 17 && (item.T === 9 || item.T === 10));
+    return Number.isNaN(Number(marketItem?.C)) ? null : Number(marketItem.C);
+  }
+  if (market === "handicap") {
+    const marketItem = findPrimaryMarket(match, (item) => item.G === 2 && (item.T === 7 || item.T === 8));
+    return Number.isNaN(Number(marketItem?.C)) ? null : Number(marketItem.C);
+  }
+  if (market === "parity") {
+    return null;
+  }
+  return null;
+}
+
+function getCouponTotalOdds() {
+  return state.couponMatches.reduce((total, item) => {
+    const odd = Number(item?.oddValue);
+    if (Number.isNaN(odd) || odd <= 0) {
+      return total;
+    }
+    return total * odd;
+  }, 1);
+}
+
+function formatOddDisplay(value) {
+  const numericValue = Number(value);
+  if (Number.isNaN(numericValue) || numericValue <= 0) {
+    return "-";
+  }
+  return numericValue.toFixed(2);
+}
+
+function loadCanvasImage(src) {
+  return new Promise((resolve, reject) => {
+    if (!src) {
+      resolve(null);
+      return;
+    }
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Impossible de charger l'image ${src}`));
+    image.src = src;
+  });
+}
+
+function drawRoundedImage(context, image, x, y, width, height, radius = 18) {
+  if (!image) {
+    return;
+  }
+  context.save();
+  roundRect(context, x, y, width, height, radius, false, false);
+  context.clip();
+  context.drawImage(image, x, y, width, height);
+  context.restore();
+}
+
 function getCouponThresholdConfig() {
   return {
     safe: { minConfidence: 0.65, scanCount: 24 },
@@ -987,6 +1062,9 @@ async function exportMatchPredictionImage(matchId) {
     const rawPrediction = predictionState.data?.raw || prediction;
     const family = rawPrediction?.family || prediction?.family || "-";
     const featuredMarkets = getFeaturedMarkets(match);
+    const homeLogo = await loadCanvasImage(getLocalAssetProxyUrl(getCompetitorImageUrl(match, "home"))).catch(() => null);
+    const awayLogo = await loadCanvasImage(getLocalAssetProxyUrl(getCompetitorImageUrl(match, "away"))).catch(() => null);
+    const leagueLogo = await loadCanvasImage(getLocalAssetProxyUrl(getLeagueImageUrl(match))).catch(() => null);
     const contextLines = [
       `Ligue: ${match.LE || match.L || "Ligue inconnue"}`,
       `Début: ${formatTimestamp(match.S)}`,
@@ -1029,6 +1107,7 @@ async function exportMatchPredictionImage(matchId) {
     context.fillStyle = "#9fb0cc";
     context.font = "28px Arial";
     context.fillText(match.LE || match.L || "Ligue inconnue", 96, 244);
+    drawRoundedImage(context, leagueLogo, 884, 174, 64, 64, 18);
 
     context.fillStyle = "rgba(255, 255, 255, 0.04)";
     roundRect(context, 96, 268, 888, 160, 24, true, false);
@@ -1045,12 +1124,14 @@ async function exportMatchPredictionImage(matchId) {
 
     context.fillStyle = "#f5f7fb";
     context.font = "700 28px Arial";
+    drawRoundedImage(context, homeLogo, 134, 478, 52, 52, 16);
     context.fillText(match.O1, 134, 516);
     context.textAlign = "center";
     context.font = "900 58px Arial";
     context.fillText(getScoreDisplay(match), 540, 536);
     context.textAlign = "right";
     context.font = "700 28px Arial";
+    drawRoundedImage(context, awayLogo, 894, 478, 52, 52, 16);
     context.fillText(match.O2, 946, 516);
     context.textAlign = "left";
 
@@ -1713,6 +1794,7 @@ function renderHome() {
 function renderCouponPage() {
   const eligibleLeagues = getCouponEligibleLeagues();
   const directSupportCount = eligibleLeagues.filter((league) => league.supportedByPredictionApi).length;
+  const totalOdds = state.couponMatches.length ? getCouponTotalOdds() : null;
   app.innerHTML = `
     <section class="hero">
       <h2>Générateur de Coupons</h2>
@@ -1784,10 +1866,18 @@ function renderCouponPage() {
     <section class="card">
       <h3>Coupon Généré</h3>
       ${state.couponMatches.length > 0 ? `
+        <div class="coupon-total-odds-card">
+          <span>Cumul des cotes</span>
+          <strong>${escapeHtml(formatOddDisplay(totalOdds))}</strong>
+        </div>
         <div class="coupon-matches">
           ${state.couponMatches.map((item, index) => `
             <div class="coupon-match-item">
               <div class="coupon-match-header">
+                <div class="coupon-match-logos">
+                  ${renderTeamAvatar(item.match.O1, getCompetitorImageUrl(item.match, "home"), "coupon-team-avatar")}
+                  ${renderTeamAvatar(item.match.O2, getCompetitorImageUrl(item.match, "away"), "coupon-team-avatar coupon-team-avatar-overlap")}
+                </div>
                 <span class="coupon-match-number">#${index + 1}</span>
                 <span class="coupon-match-teams">${escapeHtml(item.match.O1)} vs ${escapeHtml(item.match.O2)}</span>
               </div>
@@ -1795,6 +1885,7 @@ function renderCouponPage() {
                 <span>${escapeHtml(item.match.LE || item.match.L || "Ligue inconnue")}</span>
                 <span>${escapeHtml(getDisplayTime(item.match))}</span>
                 <span>${escapeHtml(formatTimestamp(item.match.S))}</span>
+                <span>Cote ${escapeHtml(formatOddDisplay(item.oddValue))}</span>
               </div>
               <div class="coupon-prediction">
                 <span class="prediction-label">Prédiction:</span>
@@ -1914,6 +2005,7 @@ async function generateCoupon() {
       const couponPrediction = getCouponPredictionCandidate(prediction, match, state.couponMarket);
 
       if (couponPrediction && couponPrediction.confidenceValue >= config.minConfidence) {
+        const oddValue = getCouponSelectionOdd(match, couponPrediction.market);
         candidates.push({
           match,
           prediction: couponPrediction.label,
@@ -1923,7 +2015,8 @@ async function generateCoupon() {
           family: prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L),
           market: couponPrediction.market,
           marketLabel: getCouponMarketLabel(couponPrediction.market),
-          detail: couponPrediction.detail
+          detail: couponPrediction.detail,
+          oddValue
         });
       }
     } catch (error) {
@@ -1953,7 +2046,8 @@ async function generateCoupon() {
         family: prediction.family || getPredictionFamilyForLeagueName(match.LE || match.L),
         market: couponPrediction.market,
         marketLabel: getCouponMarketLabel(couponPrediction.market),
-        detail: couponPrediction.detail
+        detail: couponPrediction.detail,
+        oddValue: getCouponSelectionOdd(match, couponPrediction.market)
       });
     }
     fallbackCandidates.sort((left, right) => Number(right.confidenceValue) - Number(left.confidenceValue));
@@ -1980,6 +2074,12 @@ async function exportCouponImage() {
   renderCouponPage();
 
   try {
+    const couponLogoImages = await Promise.all(
+      state.couponMatches.flatMap((item) => [
+        loadCanvasImage(getLocalAssetProxyUrl(getCompetitorImageUrl(item.match, "home"))),
+        loadCanvasImage(getLocalAssetProxyUrl(getCompetitorImageUrl(item.match, "away")))
+      ]).map((promise) => promise.catch(() => null))
+    );
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1280 + (state.couponMatches.length * 260);
@@ -2015,20 +2115,26 @@ async function exportCouponImage() {
     context.font = "24px Arial";
     context.fillText(`Seuil: ${state.couponThreshold.toUpperCase()}`, 96, 220);
     context.fillText(`Marché: ${getCouponMarketLabel(state.couponMarket)}`, 96, 254);
+    context.fillText(`Cote totale: ${formatOddDisplay(getCouponTotalOdds())}`, 96, 288);
 
-    let yPos = 320;
+    let yPos = 350;
     state.couponMatches.forEach((item, index) => {
+      const homeLogo = couponLogoImages[index * 2] || null;
+      const awayLogo = couponLogoImages[(index * 2) + 1] || null;
       context.fillStyle = "rgba(94, 234, 212, 0.16)";
       context.strokeStyle = "rgba(94, 234, 212, 0.32)";
       roundRect(context, 96, yPos, 888, 230, 20, true, true);
 
+      drawRoundedImage(context, homeLogo, 132, yPos + 26, 42, 42, 14);
+      drawRoundedImage(context, awayLogo, 182, yPos + 26, 42, 42, 14);
+
       context.fillStyle = "#ecfeff";
       context.font = "700 22px Arial";
-      context.fillText(`#${index + 1} - ${item.match.O1} vs ${item.match.O2}`, 132, yPos + 40);
+      context.fillText(`#${index + 1} - ${item.match.O1} vs ${item.match.O2}`, 238, yPos + 40);
 
       context.fillStyle = "#9fb0cc";
       context.font = "18px Arial";
-      wrapExportLine(context, `${item.match.LE || item.match.L || "Ligue inconnue"} · ${getDisplayTime(item.match)} · ${formatTimestamp(item.match.S)}`, 132, yPos + 74, 760, 24);
+      wrapExportLine(context, `${item.match.LE || item.match.L || "Ligue inconnue"} · ${getDisplayTime(item.match)} · ${formatTimestamp(item.match.S)} · Cote ${formatOddDisplay(item.oddValue)}`, 132, yPos + 74, 760, 24);
 
       context.fillStyle = "#ffffff";
       context.font = "900 36px Arial";

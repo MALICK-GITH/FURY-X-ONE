@@ -4,7 +4,7 @@ from pathlib import Path
 from socket import timeout as SocketTimeout
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs, unquote
 import json
 import mimetypes
 import os
@@ -56,6 +56,9 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
         if request_path.startswith("/api/fifa/leagues/"):
             family = request_path.split("/")[-1]
             self.fifa_leagues(family)
+            return
+        if request_path == "/api/asset":
+            self.proxy_asset()
             return
 
         relative_path = "index.html" if request_path in ("/", "") else request_path.lstrip("/")
@@ -235,6 +238,43 @@ class FuryRequestHandler(BaseHTTPRequestHandler):
             if isinstance(parsed_payload, dict) and parsed_payload.get("detail") and not parsed_payload.get("error"):
                 parsed_payload["error"] = parsed_payload["detail"]
             self.send_json(parsed_payload or {"error": str(error)}, error.code)
+        except URLError as error:
+            self.send_json({"error": describe_network_error(error)}, 502)
+
+    def proxy_asset(self):
+        try:
+            query = parse_qs(urlsplit(self.path).query)
+            raw_url = (query.get("url") or [None])[0]
+            if not raw_url:
+                self.send_json({"error": "Paramètre url manquant"}, 400)
+                return
+
+            target_url = unquote(raw_url)
+            if not target_url.startswith(("https://1xbet.com/", "https://888starz.bet/")):
+                self.send_json({"error": "URL d'asset non autorisée"}, 403)
+                return
+
+            request = Request(
+                target_url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+                    ),
+                    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                    "Referer": "https://1xbet.com/",
+                },
+            )
+            with open_url_with_retry(request, timeout=20) as response:
+                payload = response.read()
+                content_type = response.headers.get_content_type() or "application/octet-stream"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.write_response_body(payload)
+        except HTTPError as error:
+            self.send_json({"error": str(error)}, error.code)
         except URLError as error:
             self.send_json({"error": describe_network_error(error)}, 502)
 

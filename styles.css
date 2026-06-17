@@ -1955,6 +1955,23 @@ h1, h2, h3, p {
   margin-bottom: 12px;
 }
 
+.coupon-match-logos {
+  display: flex;
+  align-items: center;
+  margin-right: 4px;
+}
+
+.coupon-team-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+}
+
+.coupon-team-avatar-overlap {
+  margin-left: -8px;
+  border: 2px solid rgba(16, 24, 39, 0.9);
+}
+
 .coupon-match-subline {
   display: flex;
   flex-wrap: wrap;
@@ -2025,6 +2042,30 @@ h1, h2, h3, p {
   margin-top: 24px;
   padding-top: 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.coupon-total-odds-card {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.16), rgba(96, 165, 250, 0.12));
+  border: 1px solid rgba(94, 234, 212, 0.2);
+}
+
+.coupon-total-odds-card span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.coupon-total-odds-card strong {
+  color: #ffffff;
+  font-size: 32px;
+  font-weight: 900;
 }
 
 .coupon-meta-line {
